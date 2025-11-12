@@ -80,20 +80,20 @@ const PricingSectionNew = () => {
               key={index}
               className="rounded-2xl p-8 relative"
               style={{
-                backgroundColor: plan.popular ? '#1A1A1A' : '#FFFFFF',
+                backgroundColor: plan.popular ? '#1D2445' : '#FFFFFF',
                 border: plan.popular ? 'none' : '2px solid #E5E5E5'
               }}
             >
               {plan.popular && (
-                <span className="absolute top-4 right-4 text-xs px-3 py-1 rounded-full font-semibold" style={{ backgroundColor: '#FF5733', color: '#FFFFFF' }}>
+                <span className="absolute top-4 right-4 text-xs px-3 py-1 rounded-full font-semibold" style={{ backgroundColor: '#FF5733', color: '#FFFFFF', fontFamily: 'Manrope, sans-serif' }}>
                   Most popular
                 </span>
               )}
               
-              <h3 className="font-bold mb-4" style={{ fontSize: '20px', color: plan.popular ? '#FFFFFF' : '#0A1128' }}>
+              <h3 className="font-bold mb-4" style={{ fontSize: '20px', color: plan.popular ? '#FFFFFF' : '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
                 {plan.name}
               </h3>
-              <div className="font-bold mb-6" style={{ fontSize: '36px', color: plan.popular ? '#FFFFFF' : '#0A1128' }}>
+              <div className="font-bold mb-6" style={{ fontSize: '36px', color: plan.popular ? '#FFFFFF' : '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
                 {plan.price}
               </div>
               
@@ -101,8 +101,9 @@ const PricingSectionNew = () => {
                 <button
                   className="w-full py-3 rounded-lg font-semibold mb-6 transition-opacity hover:opacity-90"
                   style={{
-                    backgroundColor: plan.popular ? '#FFFFFF' : '#0A1128',
-                    color: plan.popular ? '#0A1128' : '#FFFFFF'
+                    backgroundColor: plan.popular ? '#FFFFFF' : '#1D2445',
+                    color: plan.popular ? '#1D2445' : '#FFFFFF',
+                    fontFamily: 'Manrope, sans-serif'
                   }}
                 >
                   {plan.button}
@@ -110,13 +111,13 @@ const PricingSectionNew = () => {
               </Link>
 
               <div className="space-y-3">
-                <p className="text-sm font-semibold mb-4" style={{ color: plan.popular ? '#FFFFFF' : '#0A1128' }}>
+                <p className="text-sm font-semibold mb-4" style={{ color: plan.popular ? '#FFFFFF' : '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
                   Main features
                 </p>
                 {plan.features.map((feature, idx) => (
                   <div key={idx} className="flex items-start gap-3">
                     <span style={{ color: plan.popular ? '#FFFFFF' : '#10B981' }}>✓</span>
-                    <span className="text-sm" style={{ color: plan.popular ? '#CCCCCC' : '#666666' }}>
+                    <span className="text-sm" style={{ color: plan.popular ? '#CCCCCC' : '#666666', fontFamily: 'Manrope, sans-serif' }}>
                       {feature}
                     </span>
                   </div>
