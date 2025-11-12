@@ -30,53 +30,59 @@ export const Navbar = () => {
   };
 
   return (
-    <nav className="bg-white shadow-lg sticky top-0 z-50">
-      <div className="max-w-7xl 2xl:container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-20">
+          {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <Image 
-                src={logo} 
-                alt="Jobocate Logo" 
-                width={180}
-                height={40}
-                className="h-10 w-auto"
-                priority
-              />
+              <span className="text-3xl font-bold text-orange-600 tracking-tight">JOBOCATE</span>
             </Link>
           </div>
+
+          {/* Desktop Navigation - Center */}
           <div className="hidden md:flex items-center space-x-8">
-            {/* <Link
+            <Link
+              href="/about"
+              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
+            >
+              About
+            </Link>
+            <Link
               href="/jobs"
-              className="relative text-gray-700 font-medium transition hover:text-blue-600 after:block after:absolute after:-bottom-1 after:left-0 after:w-0 after:h-0.5 after:bg-gradient-to-r after:from-blue-600 after:to-teal-400 hover:after:w-full after:transition-all after:duration-300"
+              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
             >
               Jobs
-            </Link> */}
-            {/* <Link
+            </Link>
+            <Link
+              href="/pricing"
+              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
+            >
+              Pricing
+            </Link>
+            <Link
               href="/contact"
-              className="relative text-gray-700 font-medium transition hover:text-blue-600 after:block after:absolute after:-bottom-1 after:left-0 after:w-0 after:h-0.5 after:bg-gradient-to-r after:from-blue-600 after:to-teal-400 hover:after:w-full after:transition-all after:duration-300"
+              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
             >
-              Contact Us
-            </Link> */}
-            {/* <Link
-              href="/blogs"
-              className="relative text-gray-700 font-medium transition hover:text-blue-600 after:block after:absolute after:-bottom-1 after:left-0 after:w-0 after:h-0.5 after:bg-gradient-to-r after:from-blue-600 after:to-teal-400 hover:after:w-full after:transition-all after:duration-300"
-            >
-              Blogs
-            </Link> */}
+              Contact
+            </Link>
+          </div>
+
+          {/* Right Side - Auth Button */}
+          <div className="hidden md:flex items-center">
             {user ? (
               <button
                 onClick={handleDashboardClick}
-                className="ml-4 px-6 py-2.5 rounded-lg bg-black text-white font-semibold shadow hover:scale-105 transition whitespace-nowrap hover:bg-gray-800"
+                className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition-colors"
               >
                 Dashboard
               </button>
             ) : (
               <Link
-                href="/promo"
-                className="ml-4 px-6 py-2.5 rounded-lg bg-black text-white font-semibold shadow hover:scale-105 transition whitespace-nowrap hover:bg-gray-800"
+                href="/login"
+                className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition-colors"
               >
-                Login
+                Log In / Sign Up
               </Link>
             )}
           </div>
@@ -84,7 +90,7 @@ export const Navbar = () => {
           {/* Hamburger for mobile */}
           <div className="md:hidden flex items-center">
             <button
-              className="text-gray-700 hover:text-blue-600 focus:outline-none"
+              className="text-gray-700 hover:text-orange-600 focus:outline-none"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="Open mobile menu"
             >
@@ -94,12 +100,14 @@ export const Navbar = () => {
             </button>
           </div>
         </div>
+
         {/* Mobile menu */}
         {mobileOpen && (
           <div className="md:hidden mt-2 bg-white rounded-lg shadow-lg py-4 px-6 flex flex-col space-y-4 animate-slide-down">
-            {/* <Link href="/jobs" className="text-gray-700 font-medium hover:text-blue-600 transition" onClick={() => setMobileOpen(false)}>Jobs</Link> */}
-            {/* <Link href="/contact" className="text-gray-700 font-medium hover:text-blue-600 transition" onClick={() => setMobileOpen(false)}>Contact Us</Link> */}
-            {/* <Link href="/blogs" className="text-gray-700 font-medium hover:text-blue-600 transition" onClick={() => setMobileOpen(false)}>Blogs</Link> */}
+            <Link href="/about" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>About</Link>
+            <Link href="/jobs" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>Jobs</Link>
+            <Link href="/pricing" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>Pricing</Link>
+            <Link href="/contact" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>Contact</Link>
             {user ? (
               <>
                 <button 
@@ -108,7 +116,7 @@ export const Navbar = () => {
                     handleDashboardClick(e);
                     setMobileOpen(false);
                   }}
-                  className="w-full px-4 py-3 text-center rounded-lg bg-black text-white font-semibold shadow hover:scale-105 transition hover:bg-gray-800"
+                  className="w-full px-4 py-3 text-center rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition-colors"
                 >
                   Dashboard
                 </button>
@@ -124,11 +132,11 @@ export const Navbar = () => {
               </>
             ) : (
               <Link 
-                href="/promo" 
-                className="px-4 py-2 rounded-full bg-black text-white font-semibold shadow hover:scale-105 transition text-center" 
+                href="/login" 
+                className="px-4 py-2.5 rounded-lg bg-gray-100 text-gray-800 font-medium text-center hover:bg-gray-200 transition-colors" 
                 onClick={() => setMobileOpen(false)}
               >
-                Login
+                Log In / Sign Up
               </Link>
             )}
           </div>
