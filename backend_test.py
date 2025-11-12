@@ -21,7 +21,7 @@ TEST_USER = {
     "email": f"testuser_{int(time.time())}@jobocate.com",
     "password": "TestPassword123!",
     "name": "John Doe",
-    "role": "talent"
+    "role": "ROLE_TALENT"
 }
 
 # Global variables
