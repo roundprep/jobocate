@@ -56,99 +56,65 @@ const HomeHero = () => {
     AOS.init({
       duration: 800,
       easing: "ease-in-out",
-      once: true, // animation runs only once
+      once: true,
     });
   }, []);
 
-  // Search submit handler (commented out for now)
-  // const handleSearch = (e) => {
-  //   e.preventDefault();
-  //   const query = searchQuery.trim();
-  //   if (query) {
-  //     // Redirect to jobs page with search query
-  //     router.push(`/jobs?search=${encodeURIComponent(query)}`);
-  //   }
-  // };
+  const handleGetStarted = () => {
+    router.push('/candidate/resume/upload');
+  };
 
   return (
-    <div className="relative py-16 bg-white">
-      <div className="max-w-7xl 2xl:container mx-auto px-4 sm:px-6 lg:px-16 flex items-center">
-        {/* Left Image */}
-        <div className="hidden lg:block w-1/4" data-aos="fade-right">
-          <ImageContainer src={girl} alt="Jobocate candidate" />
-        </div>
+    <div className="relative py-20 bg-gradient-to-b from-gray-50 to-white overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center">
+          {/* Main Headline */}
+          <h1 
+            className="text-5xl sm:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight mb-6"
+            data-aos="fade-up"
+          >
+            AI-Powered Reach,
+            <br />
+            <span className="text-orange-600">Human-Smart Precision</span>
+            <br />
+            10x Faster Job Applications
+          </h1>
 
-        {/* Center Content */}
-        <div className="w-full lg:w-1/2 px-4 sm:px-8">
-          <div className="max-w-2xl mx-auto text-center" data-aos="fade-up">
-            {/* Badge */}
-            <div className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-800 mb-6">
-              <span className="w-2 h-2 bg-black rounded-full mr-2" />
-              AI + Human Job Application Platform
-            </div>
+          {/* Subheadline */}
+          <p 
+            className="text-xl sm:text-2xl text-gray-600 mb-10 max-w-3xl mx-auto"
+            data-aos="fade-up"
+            data-aos-delay="100"
+          >
+            Let our AI take the stress out of job searching and applications.
+          </p>
 
-            {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight mb-6">
-              Approve Your Job Queue Today — Get Noticed by Top Employers
-            </h1>
-
-            {/* Description */}
-            <p className="text-lg sm:text-xl text-gray-600 mb-8 leading-relaxed">
-              Jobocate Assist blends AI auto-apply with human QA and coaching to cut your job search time.
-              We tailor resumes, apply on your behalf, and track outcomes—so you focus on interviews, not paperwork.
-            </p>
-
-            {/* Search Form */}
-            <form
-              // onSubmit={handleSearch} 
-              className="max-w-xl mx-auto"
-              data-aos="zoom-in"
+          {/* CTA Button */}
+          <div data-aos="fade-up" data-aos-delay="200">
+            <button
+              onClick={handleGetStarted}
+              className="px-10 py-5 bg-orange-600 hover:bg-orange-700 text-white text-lg font-semibold rounded-full transition-all transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-3 mx-auto"
             >
-              <div className="flex flex-col sm:flex-row gap-3 mb-8">
-                <div className="relative flex-1">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <FiSearch className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="block w-full pl-12 pr-4 py-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-black focus:border-transparent text-gray-900 placeholder-gray-500"
-                    placeholder="Job title, skills, or company"
-                    aria-label="Search for jobs"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="px-6 py-4 bg-black hover:bg-gray-900 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
-                >
-                  Find Jobs
-                  <FiArrowRight className="h-5 w-5" />
-                </button>
-              </div>
-            </form>
+              Start Applying Now
+              <FiArrowRight className="h-6 w-6" />
+            </button>
+          </div>
 
-            {/* Features */}
-            <div className="grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-4 mb-10">
-              {FEATURES.map((feature, index) => (
-                <FeatureItem key={index} text={feature} delay={index * 100} />
-              ))}
+          {/* Illustration Images */}
+          <div className="mt-16 flex justify-center items-center gap-8" data-aos="fade-up" data-aos-delay="300">
+            <div className="hidden md:block">
+              <Image src={girl} alt="Job seeker" width={200} height={300} className="object-contain" />
             </div>
-
-            {/* Stats */}
-            {/* <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-gray-200 pt-6">
-              {STATS.map((stat, index) => (
-                <StatItem key={index} number={stat.number} label={stat.label} delay={index * 150} />
-              ))}
-            </div> */}
+            <div className="hidden md:block">
+              <Image src={boy} alt="Professional" width={200} height={300} className="object-contain" />
+            </div>
           </div>
         </div>
-
-        {/* Right Image */}
-        <div className="hidden lg:block w-1/4" data-aos="fade-left">
-          <ImageContainer src={boy} alt="Jobocate candidate" />
-        </div>
       </div>
+
+      {/* Decorative Elements */}
+      <div className="absolute top-0 left-0 w-64 h-64 bg-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+      <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
     </div>
   );
 };
