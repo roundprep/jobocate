@@ -78,14 +78,14 @@ const PricingSectionNew = () => {
           {plans.map((plan, index) => (
             <div
               key={index}
-              className={`rounded-2xl p-8 ${
-                plan.popular
-                  ? 'bg-gray-900 text-white relative'
-                  : 'bg-white border-2 border-gray-200'
-              }`}
+              className="rounded-2xl p-8 relative"
+              style={{
+                backgroundColor: plan.popular ? '#1A1A1A' : '#FFFFFF',
+                border: plan.popular ? 'none' : '2px solid #E5E5E5'
+              }}
             >
               {plan.popular && (
-                <span className="absolute top-4 right-4 bg-orange-600 text-white text-xs px-3 py-1 rounded-full font-semibold">
+                <span className="absolute top-4 right-4 text-xs px-3 py-1 rounded-full font-semibold" style={{ backgroundColor: '#FF5733', color: '#FFFFFF' }}>
                   Most popular
                 </span>
               )}
