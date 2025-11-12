@@ -1,8 +1,7 @@
-"use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/router";
 import Image from "next/image";
-import { FiSearch, FiArrowRight, FiCheckCircle } from "react-icons/fi";
+import { FiArrowRight } from "react-icons/fi";
 import AOS from "aos";
 import "aos/dist/aos.css";
 
