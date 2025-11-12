@@ -240,8 +240,7 @@ metadata:
 test_plan:
   current_focus:
     - "Resume Parser Service"
-  stuck_tasks:
-    - "Resume Parser Service"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
