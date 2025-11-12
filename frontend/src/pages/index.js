@@ -5,7 +5,7 @@ import TopCompanies from "@/components/common/TopCompanies";
 import ThreeSteps from "@/components/common/ThreeSteps";
 import JobHuntingAutomated from "@/components/common/JobHuntingAutomated";
 import CompleteAISystem from "@/components/common/CompleteAISystem";
-import FAQSection from "@/components/faq/FAQSection";
+import FaqSection from "@/components/faq/FaqSection";
 import MobileAppShowcase from "@/components/common/MobileAppShowcase";
 import AIDrivenSection from "@/components/common/AIDrivenSection";
 import PricingSection from "@/components/common/PricingSectionNew";
