@@ -20,10 +20,11 @@ const ThreeSteps = () => {
   return (
     <div className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <p className="text-center text-sm mb-4" style={{ color: '#666666', fontFamily: 'Manrope, sans-serif' }}>
+          AI based job search
+        </p>
         <h2 className="font-bold text-center mb-16" style={{ fontSize: '36px', color: '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
-          Land Your Next Job In 3 Simple Steps—
-          <br />
-          Powered By AI..
+          Land Your Next Job In 3 Simple Steps— Powered By AI..
         </h2>
 
         <div className="flex flex-col md:flex-row justify-center items-start gap-8 mb-12">
