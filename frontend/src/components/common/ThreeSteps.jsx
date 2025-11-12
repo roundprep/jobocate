@@ -20,7 +20,7 @@ const ThreeSteps = () => {
   return (
     <div className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="font-bold text-center mb-16" style={{ fontSize: '36px', color: '#0A1128' }}>
+        <h2 className="font-bold text-center mb-16" style={{ fontSize: '36px', color: '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
           Land Your Next Job In 3 Simple Steps—
           <br />
           Powered By AI..
