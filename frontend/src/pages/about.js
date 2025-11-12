@@ -108,55 +108,68 @@ const About = () => {
         </div>
       </section>
 
-        {/* More Features */}
-        <section className="py-16 bg-gray-50">
-          <div className="container mx-auto px-4">
-            <div className="grid md:grid-cols-2 gap-12 items-center">
-              
-              <div>
-                <h2 className="text-4xl font-bold text-gray-900 mb-6">
-                  Smart Job Curation &<br />One Click Apply
-                </h2>
-                <p className="text-lg text-gray-600 mb-6">
-                  Jobocate's AI engine learns from your preferences, career goals, and work history 
-                  to handpick the most relevant opportunities — saving hours of scrolling.
-                </p>
-                <p className="text-gray-600">
-                  💡 It's like having your own digital career assistant.
-                </p>
+      {/* How We're Different */}
+      <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-2 gap-16 items-center">
+            
+            <div>
+              <h2 className="text-5xl font-bold text-gray-900 mb-6">
+                Smart Job Curation &<br />
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">
+                  One Click Apply
+                </span>
+              </h2>
+              <p className="text-xl text-gray-600 mb-6 leading-relaxed">
+                Jobocate's AI engine learns from your preferences, career goals, and work history 
+                to handpick the most relevant opportunities — saving hours of scrolling through 
+                irrelevant listings.
+              </p>
+              <div className="flex items-center gap-3 text-xl font-semibold text-gray-700">
+                <span className="text-3xl">💡</span>
+                <span>It's like having your own digital career assistant.</span>
               </div>
+            </div>
 
-              <div className="bg-white p-8 rounded-2xl shadow-xl">
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-8 mb-6">
-                  <p className="text-center text-orange-600 font-semibold mb-4">
-                    Resume Analyzed Successfully ✓
+            <div className="relative">
+              <div className="absolute -inset-4 bg-gradient-to-r from-orange-500 to-red-600 rounded-3xl blur-2xl opacity-20"></div>
+              <div className="relative bg-white p-10 rounded-3xl shadow-2xl">
+                <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-2xl p-8 mb-6 text-center">
+                  <p className="text-orange-600 font-bold text-xl mb-4">
+                    ✓ Resume Analyzed Successfully
                   </p>
-                  <div className="h-2 bg-orange-200 rounded-full overflow-hidden">
-                    <div className="h-full w-3/4 bg-orange-500 rounded-full"></div>
+                  <div className="h-3 bg-orange-200 rounded-full overflow-hidden">
+                    <div className="h-full w-4/5 bg-gradient-to-r from-orange-500 to-red-600 rounded-full animate-pulse"></div>
                   </div>
+                  <p className="text-gray-600 mt-4 text-sm">Optimizing for 150+ matching jobs...</p>
                 </div>
-                <button className="w-full bg-gray-900 text-white py-4 rounded-xl font-semibold hover:bg-gray-800 transition">
+                <button className="w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white py-5 rounded-2xl font-bold text-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
                   Start Applying →
                 </button>
               </div>
-
             </div>
-          </div>
-        </section>
 
-        {/* Human + AI Section */}
-        <section className="py-16">
-          <div className="container mx-auto px-4 text-center">
-            <h2 className="text-4xl font-bold text-gray-900 mb-6">
-              Human + AI Synergy
-            </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
-              We believe in balance. Our human assistance ensures empathy and precision, 
-              while AI brings unmatched speed and scalability.
-            </p>
-            <p className="text-2xl">❤️ Because real growth needs a human touch.</p>
           </div>
-        </section>
+        </div>
+      </section>
+
+      {/* Human + AI Synergy */}
+      <section className="py-20 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 relative overflow-hidden">
+        <div className="absolute inset-0 bg-black/10"></div>
+        <div className="relative container mx-auto px-4 text-center z-10">
+          <h2 className="text-5xl md:text-6xl font-extrabold text-white mb-8">
+            Human + AI Synergy
+          </h2>
+          <p className="text-2xl text-white/95 mb-6 max-w-4xl mx-auto leading-relaxed">
+            We believe in balance. Our human assistance ensures empathy and precision, 
+            while AI brings unmatched speed and scalability — working together to deliver 
+            the best results.
+          </p>
+          <p className="text-4xl font-bold text-white">
+            ❤️ Because real growth needs a human touch.
+          </p>
+        </div>
+      </section>
 
         {/* CTA Section */}
         <section className="py-20 bg-gradient-to-r from-orange-500 to-orange-600">
