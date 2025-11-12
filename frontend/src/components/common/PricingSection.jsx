@@ -58,9 +58,9 @@ export default function PricingSection() {
     },
   ];
 
-  // Separate the plans into main plans and personalized plan
-  const mainPlans = plans.filter((plan) => plan.name !== "Personalized");
-  const personalizedPlan = plans.find((plan) => plan.name === "Personalized");
+  const getPrice = (plan) => {
+    return isMonthToMonth ? plan.priceMonthly : plan.priceYearly;
+  };
 
   return (
     <section className="w-full py-20 bg-gray-50">
