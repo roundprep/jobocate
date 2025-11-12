@@ -98,6 +98,13 @@ export default function PricingSection() {
           >
             Month-to-Month
           </span>
+          <span
+            className={
+              isMonthToMonth ? "text-gray-800 font-medium" : "text-gray-400"
+            }
+          >
+            Billed Monthly
+          </span>
         </div>
       </div>
 
