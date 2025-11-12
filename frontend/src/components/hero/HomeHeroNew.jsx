@@ -23,7 +23,7 @@ const HomeHeroNew = () => {
             <h1 className="font-bold leading-tight mb-6" style={{ fontSize: '50px', fontFamily: 'Manrope, sans-serif' }}>
               <span style={{ color: '#1D2445' }}>AI-Powered Reach.</span>
               <br />
-              <span style={{ color: '#1D2445' }}>Human-Smart Precision.</span>
+              <span style={{ color: '#FF5733' }}>Human-Smart Precision.</span>
               <br />
               <span style={{ color: '#1D2445' }}>10x Faster Job Applications</span>
             </h1>
