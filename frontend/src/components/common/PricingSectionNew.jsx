@@ -52,7 +52,7 @@ const PricingSectionNew = () => {
 
           {/* Billing Toggle */}
           <div className="flex justify-center items-center gap-4 mb-12">
-            <span className={`font-medium ${!isYearly ? 'font-bold' : ''}`} style={{ color: !isYearly ? '#0A1128' : '#666666' }}>
+            <span className={`font-medium ${!isYearly ? 'font-bold' : ''}`} style={{ color: !isYearly ? '#1D2445' : '#666666', fontFamily: 'Manrope, sans-serif' }}>
               Billed monthly
             </span>
             <button
@@ -67,7 +67,7 @@ const PricingSectionNew = () => {
                 style={{ backgroundColor: isYearly ? '#FF5733' : '#FFFFFF' }}
               />
             </button>
-            <span className={`font-medium ${isYearly ? 'font-bold' : ''}`} style={{ color: isYearly ? '#FF5733' : '#666666' }}>
+            <span className={`font-medium ${isYearly ? 'font-bold' : ''}`} style={{ color: isYearly ? '#FF5733' : '#666666', fontFamily: 'Manrope, sans-serif' }}>
               Billed yearly
             </span>
           </div>
