@@ -48,9 +48,7 @@ const FeatureItem = ({ text, delay }) => (
 
 const HomeHero = () => {
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
 
-  // Initialize AOS animations
   useEffect(() => {
     AOS.init({
       duration: 800,
@@ -67,40 +65,27 @@ const HomeHero = () => {
     <div className="relative py-20 bg-gradient-to-b from-gray-50 to-white overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center">
-          {/* Main Headline */}
-          <h1 
-            className="text-5xl sm:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight mb-6"
-            data-aos="fade-up"
-          >
+          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight mb-6">
             AI-Powered Reach,
             <br />
-            <span className="text-orange-600">Human-Smart Precision</span>
+            <span className="text-orange-600">Human-Smart Precision,</span>
             <br />
             10x Faster Job Applications
           </h1>
 
-          {/* Subheadline */}
-          <p 
-            className="text-xl sm:text-2xl text-gray-600 mb-10 max-w-3xl mx-auto"
-            data-aos="fade-up"
-            data-aos-delay="100"
-          >
+          <p className="text-xl sm:text-2xl text-gray-600 mb-10 max-w-3xl mx-auto">
             Let our AI take the stress out of job searching and applications.
           </p>
 
-          {/* CTA Button */}
-          <div data-aos="fade-up" data-aos-delay="200">
-            <button
-              onClick={handleGetStarted}
-              className="px-10 py-5 bg-orange-600 hover:bg-orange-700 text-white text-lg font-semibold rounded-full transition-all transform hover:scale-105 shadow-lg hover:shadow-xl flex items-center gap-3 mx-auto"
-            >
-              Start Applying Now
-              <FiArrowRight className="h-6 w-6" />
-            </button>
-          </div>
+          <button
+            onClick={handleGetStarted}
+            className="px-10 py-5 bg-orange-600 hover:bg-orange-700 text-white text-lg font-semibold rounded-full transition-all transform hover:scale-105 shadow-lg hover:shadow-xl inline-flex items-center gap-3"
+          >
+            Start Applying Now
+            <FiArrowRight className="h-6 w-6" />
+          </button>
 
-          {/* Illustration Images */}
-          <div className="mt-16 flex justify-center items-center gap-8" data-aos="fade-up" data-aos-delay="300">
+          <div className="mt-16 flex justify-center items-center gap-8">
             <div className="hidden md:block">
               <Image src={girl} alt="Job seeker" width={200} height={300} className="object-contain" />
             </div>
@@ -111,9 +96,8 @@ const HomeHero = () => {
         </div>
       </div>
 
-      {/* Decorative Elements */}
-      <div className="absolute top-0 left-0 w-64 h-64 bg-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-      <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+      <div className="absolute top-0 left-0 w-64 h-64 bg-orange-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
+      <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
     </div>
   );
 };
