@@ -147,9 +147,15 @@ def test_login():
             headers={"Content-Type": "application/json"}
         )
         
-        if response.status_code == 200:
+        if response.status_code == 200 or response.status_code == 201:
             data = response.json()
-            if 'access_token' in data:
+            if 'data' in data and 'access_token' in data['data']:
+                auth_token = data['data']['access_token']
+                if 'user' in data['data'] and 'id' in data['data']['user']:
+                    user_id = data['data']['user']['id']
+                print_result("User Login", True, "Login successful, token obtained")
+                return True
+            elif 'access_token' in data:
                 auth_token = data['access_token']
                 if 'user' in data and 'userId' in data['user']:
                     user_id = data['user']['userId']
