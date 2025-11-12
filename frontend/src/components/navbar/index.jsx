@@ -36,12 +36,12 @@ export const Navbar = () => {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <div className="relative w-28 h-10">
+              <div className="relative w-32 h-12 bg-black rounded px-2 py-1">
                 <Image 
                   src={logo} 
                   alt="Advocate Logo" 
                   fill
-                  className="object-contain object-left"
+                  className="object-contain p-1"
                   priority
                 />
               </div>
