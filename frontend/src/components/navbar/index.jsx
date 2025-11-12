@@ -30,17 +30,15 @@ export const Navbar = () => {
   };
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+        <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <img 
-                src="/jobocate-logo.png" 
-                alt="JOBOCATE" 
-                className="h-10 w-auto"
-              />
+              <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">
+                JOBOCATE
+              </span>
             </Link>
           </div>
 
@@ -48,25 +46,25 @@ export const Navbar = () => {
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="/about"
-              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
+              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
             >
               About
             </Link>
             <Link
               href="/jobs"
-              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
+              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
             >
               Jobs
             </Link>
             <Link
               href="/pricing"
-              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
+              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
             >
               Pricing
             </Link>
             <Link
               href="/contact"
-              className="text-gray-700 font-medium hover:text-orange-600 transition-colors"
+              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
             >
               Contact
             </Link>
@@ -77,14 +75,14 @@ export const Navbar = () => {
             {user ? (
               <button
                 onClick={handleDashboardClick}
-                className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition-colors"
+                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold hover:shadow-lg transition-all"
               >
                 Dashboard
               </button>
             ) : (
               <Link
                 href="/login"
-                className="px-6 py-2.5 rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition-colors"
+                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold hover:shadow-lg transition-all"
               >
                 Log In / Sign Up
               </Link>
