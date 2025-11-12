@@ -90,33 +90,33 @@ const PricingSectionNew = () => {
                 </span>
               )}
               
-              <h3 className={`text-xl font-bold mb-4 ${plan.popular ? 'text-white' : 'text-gray-900'}`}>
+              <h3 className="font-bold mb-4" style={{ fontSize: '20px', color: plan.popular ? '#FFFFFF' : '#0A1128' }}>
                 {plan.name}
               </h3>
-              <div className={`text-5xl font-bold mb-6 ${plan.popular ? 'text-white' : 'text-gray-900'}`}>
+              <div className="font-bold mb-6" style={{ fontSize: '36px', color: plan.popular ? '#FFFFFF' : '#0A1128' }}>
                 {plan.price}
               </div>
               
               <Link href="/signup">
                 <button
-                  className={`w-full py-3 rounded-lg font-semibold mb-6 transition-colors ${
-                    plan.popular
-                      ? 'bg-white text-gray-900 hover:bg-gray-100'
-                      : 'bg-gray-900 text-white hover:bg-gray-800'
-                  }`}
+                  className="w-full py-3 rounded-lg font-semibold mb-6 transition-opacity hover:opacity-90"
+                  style={{
+                    backgroundColor: plan.popular ? '#FFFFFF' : '#0A1128',
+                    color: plan.popular ? '#0A1128' : '#FFFFFF'
+                  }}
                 >
                   {plan.button}
                 </button>
               </Link>
 
               <div className="space-y-3">
-                <p className={`text-sm font-semibold mb-4 ${plan.popular ? 'text-white' : 'text-gray-900'}`}>
+                <p className="text-sm font-semibold mb-4" style={{ color: plan.popular ? '#FFFFFF' : '#0A1128' }}>
                   Main features
                 </p>
                 {plan.features.map((feature, idx) => (
                   <div key={idx} className="flex items-start gap-3">
-                    <span className={plan.popular ? 'text-white' : 'text-green-600'}>✓</span>
-                    <span className={`text-sm ${plan.popular ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <span style={{ color: plan.popular ? '#FFFFFF' : '#10B981' }}>✓</span>
+                    <span className="text-sm" style={{ color: plan.popular ? '#CCCCCC' : '#666666' }}>
                       {feature}
                     </span>
                   </div>
