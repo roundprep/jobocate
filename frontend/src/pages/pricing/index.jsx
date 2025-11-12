@@ -92,7 +92,7 @@ const PricingPage = () => {
             {/* Pro Plan - Most Popular */}
             <div className="relative transform md:scale-110 z-10">
               {/* Popular Badge */}
-              <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-600 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-600 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg z-20">
                 ⚡ MOST POPULAR
               </div>
               
