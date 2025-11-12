@@ -1,39 +1,34 @@
 import Layout from "@/components/layout";
 import SEO from "@/components/seo/SEO";
-import HomeHero from "@/components/hero/HomeHeroNew";
-import TopCompanies from "@/components/common/TopCompanies";
-import ThreeSteps from "@/components/common/ThreeSteps";
+import HomeHeroExact from "@/components/hero/HomeHeroExact";
+import TopCompaniesHiring from "@/components/common/TopCompaniesHiring";
+import ThreeStepsExact from "@/components/common/ThreeStepsExact";
 import JobHuntingAutomated from "@/components/common/JobHuntingAutomated";
-import CompleteAISystem from "@/components/common/CompleteAISystem";
-import FaqSection from "@/components/faq/FaqSection";
-import MobileAppShowcase from "@/components/common/MobileAppShowcase";
-import AIDrivenSection from "@/components/common/AIDrivenSection";
-import PricingSection from "@/components/common/PricingSectionNew";
-import TestimonialQuote from "@/components/common/TestimonialQuote";
-import EmployerCTA from "@/components/common/EmployerCTA";
-import RotatingBanner from "@/components/common/RotatingBanner";
+import CompleteAISystemExact from "@/components/common/CompleteAISystemExact";
+import AIFeaturedCards from "@/components/common/AIFeaturedCards";
+import PricingExact from "@/components/common/PricingExact";
+import TestimonialSection from "@/components/testimonial/TestimonialSection";
+import EmployerCTAExact from "@/components/common/EmployerCTAExact";
+import ScrollingBanner from "@/components/common/ScrollingBanner";
 
 export default function Home() {
   return (
     <>
       <SEO 
-        title="JobOcate - AI-Powered Job Search Platform"
+        title="JOBOCATE - AI-Powered Job Applications"
         description="AI-Powered Reach. Human-Smart Precision. 10x Faster Job Applications"
-        keywords="job search, AI jobs, automated job applications, career platform"
       />
       <Layout>
-        <HomeHero />
-        <TopCompanies />
-        <ThreeSteps />
+        <HomeHeroExact />
+        <TopCompaniesHiring />
+        <ThreeStepsExact />
         <JobHuntingAutomated />
-        <CompleteAISystem />
-        <FaqSection />
-        <MobileAppShowcase />
-        <AIDrivenSection />
-        <PricingSection />
-        <TestimonialQuote />
-        <EmployerCTA />
-        <RotatingBanner />
+        <CompleteAISystemExact />
+        <AIFeaturedCards />
+        <PricingExact />
+        <TestimonialSection />
+        <EmployerCTAExact />
+        <ScrollingBanner />
       </Layout>
     </>
   );
