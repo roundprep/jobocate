@@ -72,14 +72,14 @@ export default function PricingSection() {
           Flexible Pricing For Every Career Journey
         </h2>
 
-        {/* Billing Toggle - Only for main plans */}
+        {/* Billing Toggle */}
         <div className="flex justify-center items-center gap-3 mt-4">
           <span
             className={
               !isMonthToMonth ? "text-gray-800 font-medium" : "text-gray-400"
             }
           >
-            6-Month Commitment
+            Billed Yearly
           </span>
           <button
             onClick={() => setIsMonthToMonth(!isMonthToMonth)}
