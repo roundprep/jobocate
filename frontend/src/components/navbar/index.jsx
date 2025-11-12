@@ -36,7 +36,9 @@ export const Navbar = () => {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <span className="text-3xl font-bold text-orange-600 tracking-tight">JOBOCATE</span>
+              <span className="text-3xl font-extrabold tracking-tight" style={{ color: '#FF5733' }}>
+                J<span className="relative inline-block">O<span className="absolute inset-0 flex items-center justify-center text-xs">✦</span></span>B<span className="relative inline-block">O<span className="absolute inset-0 flex items-center justify-center text-xs">✦</span></span>CATE
+              </span>
             </Link>
           </div>
 
