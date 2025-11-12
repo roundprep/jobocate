@@ -27,7 +27,7 @@ export default function Home() {
         <ThreeSteps />
         <JobHuntingAutomated />
         <CompleteAISystem />
-        <FAQSection />
+        <FaqSection />
         <MobileAppShowcase />
         <AIDrivenSection />
         <PricingSection />
