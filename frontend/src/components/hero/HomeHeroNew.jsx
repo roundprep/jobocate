@@ -17,24 +17,25 @@ const HomeHeroNew = () => {
           </div>
 
           {/* Center Content */}
-          <div className="flex-1 text-center max-w-3xl">
-            <p className="text-sm text-gray-500 mb-4">We are your future</p>
+          <div className="flex-1 text-center max-w-4xl">
+            <p className="text-sm mb-6" style={{ color: '#666666' }}>We are your future</p>
             
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold leading-tight mb-6">
-              <span className="text-gray-900">AI-Powered Reach.</span>
+            <h1 className="font-bold leading-tight mb-6" style={{ fontSize: '50px' }}>
+              <span style={{ color: '#0A1128' }}>AI-Powered Reach.</span>
               <br />
-              <span className="text-orange-600">Human-Smart Precision.</span>
+              <span style={{ color: '#FF5733' }}>Human-Smart Precision.</span>
               <br />
-              <span className="text-gray-900">10x Faster Job Applications</span>
+              <span style={{ color: '#0A1128' }}>10x Faster Job Applications</span>
             </h1>
 
-            <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
+            <p className="mb-8 max-w-2xl mx-auto" style={{ fontSize: '18px', color: '#666666', lineHeight: '28px' }}>
               Our AI-driven platform automates your job search by constantly finding and applying to the right roles—until you land the job
             </p>
 
             <button
               onClick={() => router.push('/candidate/resume/upload')}
-              className="inline-flex items-center gap-3 px-10 py-4 bg-gray-900 text-white font-semibold rounded-lg hover:bg-gray-800 transition-colors"
+              className="inline-flex items-center gap-3 px-10 py-4 font-bold rounded-lg hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: '#0A1128', color: '#FFFFFF', fontSize: '16px' }}
             >
               Start Applying Now
               <FiArrowRight className="w-5 h-5" />
