@@ -2,30 +2,41 @@ import React from 'react';
 import Head from 'next/head';
 import { Navbar } from '../components/navbar';
 import { Footer } from '../components/footer';
+import Link from 'next/link';
 
 const About = () => {
   return (
-    <div>
+    <div className="bg-white">
       <Head>
-        <title>About Us - Jobocate</title>
-        <meta name="description" content="Learn more about Jobocate" />
+        <title>About Us - Jobocate | Revolutionizing Job Search with AI</title>
+        <meta name="description" content="Learn how Jobocate is transforming the job search experience with AI-powered tools" />
       </Head>
 
       <Navbar />
 
-      <main className="min-h-screen bg-white">
-        {/* Hero Section */}
-        <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
-          <div className="container mx-auto px-4 text-center">
-            <p className="text-orange-500 font-semibold mb-4">Why Us?</p>
-            <h1 className="text-5xl font-bold text-gray-900 mb-6">
-              The only job seeker<br />centric platform
-            </h1>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Where Innovation Meets Your Career
-            </p>
+      {/* Hero Section */}
+      <section className="relative py-32 bg-gradient-to-br from-orange-50 via-white to-purple-50 overflow-hidden">
+        <div className="absolute inset-0">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
+          <div className="absolute bottom-20 right-10 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
+        </div>
+
+        <div className="relative container mx-auto px-4 text-center z-10">
+          <div className="inline-block bg-orange-100 text-orange-600 px-6 py-2 rounded-full font-semibold mb-6">
+            Our Mission
           </div>
-        </section>
+          <h1 className="text-6xl md:text-7xl font-extrabold text-gray-900 mb-8 leading-tight">
+            The Only <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">Job Seeker</span><br />
+            Centric Platform
+          </h1>
+          <p className="text-2xl text-gray-600 max-w-4xl mx-auto leading-relaxed">
+            Where Innovation Meets Your Career. We're revolutionizing job search by combining 
+            <span className="font-bold text-orange-600"> AI-Powered Reach</span>, 
+            <span className="font-bold text-purple-600"> Human-Smart Precision</span>, and 
+            <span className="font-bold text-blue-600"> 10x Faster Results</span>
+          </p>
+        </div>
+      </section>
 
         {/* Features Section */}
         <section className="py-16">
