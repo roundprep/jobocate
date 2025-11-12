@@ -84,12 +84,18 @@ const Signup = () => {
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/">
-            <span className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-orange-600 cursor-pointer">
-              JOBOCATE
-            </span>
+          <Link href="/" className="inline-block">
+            <div className="relative w-48 h-14 mx-auto mb-3 bg-black rounded-lg px-4 py-2">
+              <Image 
+                src={logo} 
+                alt="Advocate Logo" 
+                fill
+                className="object-contain p-2"
+                priority
+              />
+            </div>
           </Link>
-          <p className="mt-2 text-gray-600 font-medium">Create your account and get started</p>
+          <p className="text-gray-600 font-medium">Create your account and get started</p>
         </div>
 
         {/* Main Card */}
