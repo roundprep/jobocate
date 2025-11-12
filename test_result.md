@@ -236,11 +236,9 @@ metadata:
 
 test_plan:
   current_focus:
-    - "About Page UI"
-    - "Job Scraper Service - Indeed"
-    - "Job Scraper Service - LinkedIn"
     - "Resume Parser Service"
-  stuck_tasks: []
+  stuck_tasks:
+    - "Resume Parser Service"
   test_all: false
   test_priority: "high_first"
 
