@@ -36,9 +36,15 @@ export const Navbar = () => {
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
-              <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">
-                JOBOCATE
-              </span>
+              <div className="relative w-28 h-10">
+                <Image 
+                  src={logo} 
+                  alt="Advocate Logo" 
+                  fill
+                  className="object-contain object-left"
+                  priority
+                />
+              </div>
             </Link>
           </div>
 
