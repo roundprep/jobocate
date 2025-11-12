@@ -30,12 +30,18 @@ const ThreeSteps = () => {
         <div className="flex flex-col md:flex-row justify-center items-start gap-8 mb-12">
           {steps.map((step, index) => (
             <div key={index} className="flex-1 max-w-sm">
-              <div className="rounded-2xl p-8 shadow-lg transform transition hover:scale-105" style={{ backgroundColor: '#1D2445' }}>
+              <div className="rounded-2xl p-8 shadow-lg transform transition hover:scale-105 relative overflow-hidden" style={{ backgroundColor: '#1D2445' }}>
+                <div className="absolute top-6 left-6 w-2 h-2 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}></div>
                 <div className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mb-6" style={{ backgroundColor: '#FF5733', color: '#FFFFFF', fontFamily: 'Manrope, sans-serif' }}>
                   {step.number}
                 </div>
                 <h3 className="font-bold mb-3" style={{ fontSize: '24px', color: '#FFFFFF', fontFamily: 'Manrope, sans-serif' }}>{step.title}</h3>
                 <p style={{ fontSize: '16px', color: '#CCCCCC', lineHeight: '24px', fontFamily: 'Manrope, sans-serif' }}>{step.description}</p>
+                
+                {/* Decorative pattern at bottom */}
+                <div className="absolute bottom-0 left-0 right-0 h-24 opacity-10" style={{
+                  backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.1) 10px, rgba(255,255,255,0.1) 20px)`
+                }}></div>
               </div>
             </div>
           ))}
