@@ -45,8 +45,8 @@ const PricingSectionNew = () => {
     <div className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <p className="text-sm mb-2" style={{ color: '#666666' }}>Choose your plan</p>
-          <h2 className="font-bold mb-8" style={{ fontSize: '36px', color: '#0A1128' }}>
+          <p className="text-sm mb-2" style={{ color: '#666666', fontFamily: 'Manrope, sans-serif' }}>Choose your plan</p>
+          <h2 className="font-bold mb-8" style={{ fontSize: '36px', color: '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
             Flexible Pricing For Every Career Journey.
           </h2>
 
