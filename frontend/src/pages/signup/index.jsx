@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/context/AuthContext';
+import logo from '@/assets/advocate_logo.png';
 
 const Signup = () => {
   const [formData, setFormData] = useState({
