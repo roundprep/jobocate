@@ -54,7 +54,7 @@ const PricingPage = () => {
           </div>
 
           {/* Pricing Cards */}
-          <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-8 max-w-7xl mx-auto pt-8">
             {/* Free Plan */}
             <div className="bg-white p-8 rounded-3xl border-2 border-gray-200 hover:border-orange-300 transition-all duration-300 hover:shadow-2xl">
               <h3 className="text-3xl font-bold text-gray-900 mb-2">Free</h3>
