@@ -171,23 +171,87 @@ const About = () => {
         </div>
       </section>
 
-        {/* CTA Section */}
-        <section className="py-20 bg-gradient-to-r from-orange-500 to-orange-600">
-          <div className="container mx-auto px-4 text-center">
-            <h2 className="text-4xl font-bold text-white mb-6">
-              Ready to revolutionize your job search?
-            </h2>
-            <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-              Join thousands of job seekers who've already found their dream careers with Jobocate
-            </p>
-            <button className="bg-white text-orange-600 px-8 py-4 rounded-lg font-bold text-lg hover:bg-gray-50 transition shadow-lg">
-              Get Started - It's Free
-            </button>
+      {/* Our Story */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-16">
+              <h2 className="text-5xl font-bold text-gray-900 mb-6">Our Story</h2>
+              <p className="text-xl text-gray-600 leading-relaxed">
+                Jobocate was born from a simple frustration: job searching is broken.
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-50 to-purple-50 rounded-3xl p-12 mb-12">
+              <p className="text-2xl text-gray-700 leading-relaxed mb-6">
+                We watched talented professionals spend <span className="font-bold text-orange-600">hundreds of hours</span> manually 
+                filling out applications, tailoring resumes, and writing cover letters — only to hear crickets back.
+              </p>
+              <p className="text-2xl text-gray-700 leading-relaxed">
+                We knew there had to be a better way. So we built <span className="font-bold text-purple-600">Jobocate</span> — 
+                an AI-powered platform that handles the tedious work while you focus on what matters: 
+                preparing for interviews and landing your dream job.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-8 text-center">
+              <div>
+                <p className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 mb-3">
+                  100K+
+                </p>
+                <p className="text-gray-600 font-semibold">Active Users</p>
+              </div>
+              <div>
+                <p className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-600 mb-3">
+                  1.6M+
+                </p>
+                <p className="text-gray-600 font-semibold">Applications Sent</p>
+              </div>
+              <div>
+                <p className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-cyan-600 mb-3">
+                  58K+
+                </p>
+                <p className="text-gray-600 font-semibold">Interviews Landed</p>
+              </div>
+            </div>
           </div>
-        </section>
-      </main>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-24 bg-gradient-to-r from-orange-500 via-red-500 to-purple-600 relative overflow-hidden">
+        <div className="absolute inset-0 bg-black/10"></div>
+        <div className="relative container mx-auto px-4 text-center z-10">
+          <h2 className="text-5xl md:text-6xl font-extrabold text-white mb-6">
+            Ready to Transform Your Job Search?
+          </h2>
+          <p className="text-2xl text-white/90 mb-10 max-w-3xl mx-auto">
+            Join 100,000+ job seekers using AI to get hired faster
+          </p>
+          <Link href="/signup">
+            <button className="px-12 py-5 bg-white text-orange-600 font-bold text-xl rounded-xl shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300">
+              Get Started - It's Free →
+            </button>
+          </Link>
+          <p className="text-white/80 mt-6 text-lg">No credit card required • Cancel anytime</p>
+        </div>
+      </section>
 
       <Footer />
+
+      <style jsx>{`
+        @keyframes blob {
+          0%, 100% { transform: translate(0px, 0px) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+      `}</style>
     </div>
   );
 };
