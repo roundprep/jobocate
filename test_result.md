@@ -142,11 +142,11 @@ backend:
 
   - task: "Resume Parser Service"
     implemented: true
-    working: false
+    working: "NA"
     file: "/app/backend/src/resume-parser/resume-parser.service.ts"
     stuck_count: 1
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: "NA"
         agent: "main"
@@ -154,6 +154,9 @@ backend:
       - working: false
         agent: "testing"
         comment: "CRITICAL BUG: Resume parsing fails with error 'pdfParse.default is not a function'. Issue is in line 45 of resume-parser.service.ts. The pdf-parse library (v2.4.5) import is incorrect. Need to fix import statement: change 'await (pdfParse as any).default(buffer)' to 'await pdfParse(buffer)' or update import to 'import pdfParse from 'pdf-parse''. This blocks all resume upload functionality."
+      - working: "NA"
+        agent: "main"
+        comment: "FIXED: Changed import from '* as pdfParse' to default import 'import pdfParse from pdf-parse' and updated usage to 'await pdfParse(buffer)'. Backend restarted successfully. Ready for retesting."
 
   - task: "Job Scraper Service - Indeed"
     implemented: true
