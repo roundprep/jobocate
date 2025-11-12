@@ -18,7 +18,7 @@ API_PREFIX = ""  # Routes already have /api prefix in controllers
 
 # Test user credentials
 TEST_USER = {
-    "email": f"testuser_{int(time.time())}@jobocate.com",
+    "email": "testuser_1762987643@jobocate.com",
     "password": "TestPassword123!",
     "name": "John Doe",
     "role": "ROLE_TALENT"
