@@ -38,62 +38,75 @@ const About = () => {
         </div>
       </section>
 
-        {/* Features Section */}
-        <section className="py-16">
-          <div className="container mx-auto px-4">
-            <div className="grid md:grid-cols-3 gap-8">
-              
-              {/* Feature 1 */}
-              <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
-                <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                  </svg>
+      {/* Features Grid - Why Choose Us */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-bold text-gray-900 mb-4">
+              Why Choose <span className="text-orange-600">Jobocate</span>?
+            </h2>
+            <p className="text-xl text-gray-600">
+              We're different because we put job seekers first
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-10">
+            {/* Feature 1 */}
+            <div className="group relative">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 to-red-600 rounded-3xl blur opacity-20 group-hover:opacity-50 transition duration-300"></div>
+              <div className="relative bg-white p-10 rounded-3xl border border-gray-200">
+                <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl flex items-center justify-center text-5xl mb-6 shadow-lg">
+                  🔗
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
                   Effortless Collaboration
                 </h3>
-                <p className="text-gray-600">
+                <p className="text-gray-600 text-lg leading-relaxed">
                   Share opportunities, insights, and updates seamlessly with your network. 
-                  Jobocate keeps collaboration effortless. 🔗 Grow together, faster.
+                  Whether you're mentoring or referring, Jobocate keeps collaboration effortless. 
+                  Grow together, faster.
                 </p>
               </div>
+            </div>
 
-              {/* Feature 2 */}
-              <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
-                <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
+            {/* Feature 2 */}
+            <div className="group relative">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-600 rounded-3xl blur opacity-20 group-hover:opacity-50 transition duration-300"></div>
+              <div className="relative bg-white p-10 rounded-3xl border border-gray-200">
+                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center text-5xl mb-6 shadow-lg">
+                  🎯
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                  AI-Powered Guidance
+                  AI-Powered Career Guidance
                 </h3>
-                <p className="text-gray-600">
-                  Get insights on which skills to upgrade and roles to target. 
-                  🎯 Turn your career goals into a clear action plan.
+                <p className="text-gray-600 text-lg leading-relaxed">
+                  Beyond just jobs — Jobocate gives insights on which skills to upgrade, 
+                  which roles to target, and how to stand out in your industry. 
+                  Turn your career goals into a clear action plan.
                 </p>
               </div>
+            </div>
 
-              {/* Feature 3 */}
-              <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100">
-                <div className="bg-orange-100 w-16 h-16 rounded-full flex items-center justify-center mb-6">
-                  <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
+            {/* Feature 3 */}
+            <div className="group relative">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-600 rounded-3xl blur opacity-20 group-hover:opacity-50 transition duration-300"></div>
+              <div className="relative bg-white p-10 rounded-3xl border border-gray-200">
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-2xl flex items-center justify-center text-5xl mb-6 shadow-lg">
+                  📍
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                  Real-Time Tracking
+                  Real-Time Job Tracking
                 </h3>
-                <p className="text-gray-600">
-                  Stay updated with every application. From "Applied" to "Interview Scheduled." 
-                  📍 Your career journey, clearly visualized.
+                <p className="text-gray-600 text-lg leading-relaxed">
+                  Stay updated with every application. From "Applied" to "Interview Scheduled," 
+                  Jobocate tracks it all — so you never lose sight of your progress. 
+                  Your career journey, clearly visualized.
                 </p>
               </div>
-
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
         {/* More Features */}
         <section className="py-16 bg-gray-50">
