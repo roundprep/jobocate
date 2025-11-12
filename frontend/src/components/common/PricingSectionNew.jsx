@@ -52,20 +52,22 @@ const PricingSectionNew = () => {
 
           {/* Billing Toggle */}
           <div className="flex justify-center items-center gap-4 mb-12">
-            <span className={`font-medium ${!isYearly ? 'text-gray-900' : 'text-gray-400'}`}>
+            <span className={`font-medium ${!isYearly ? 'font-bold' : ''}`} style={{ color: !isYearly ? '#0A1128' : '#666666' }}>
               Billed monthly
             </span>
             <button
               onClick={() => setIsYearly(!isYearly)}
-              className="relative w-14 h-7 bg-gray-300 rounded-full transition-colors"
+              className="relative w-14 h-7 rounded-full transition-colors"
+              style={{ backgroundColor: '#CCCCCC' }}
             >
               <span
-                className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
-                  isYearly ? 'translate-x-7 bg-orange-600' : ''
+                className={`absolute top-1 left-1 w-5 h-5 rounded-full transition-transform ${
+                  isYearly ? 'translate-x-7' : ''
                 }`}
+                style={{ backgroundColor: isYearly ? '#FF5733' : '#FFFFFF' }}
               />
             </button>
-            <span className={`font-medium ${isYearly ? 'text-orange-600' : 'text-gray-400'}`}>
+            <span className={`font-medium ${isYearly ? 'font-bold' : ''}`} style={{ color: isYearly ? '#FF5733' : '#666666' }}>
               Billed yearly
             </span>
           </div>
