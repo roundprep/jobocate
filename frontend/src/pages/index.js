@@ -4,12 +4,12 @@ import HomeHeroExact from "@/components/hero/HomeHeroExact";
 import TopCompaniesHiring from "@/components/common/TopCompaniesHiring";
 import ThreeStepsExact from "@/components/common/ThreeStepsExact";
 import JobHuntingAutomated from "@/components/common/JobHuntingAutomated";
-import CompleteAISystemExact from "@/components/common/CompleteAISystemExact";
-import AIFeaturedCards from "@/components/common/AIFeaturedCards";
-import PricingExact from "@/components/common/PricingExact";
-import TestimonialSection from "@/components/testimonial/TestimonialSection";
-import EmployerCTAExact from "@/components/common/EmployerCTAExact";
-import ScrollingBanner from "@/components/common/ScrollingBanner";
+import CompleteAISystem from "@/components/common/CompleteAISystem";
+import AIDrivenSection from "@/components/common/AIDrivenSection";
+import PricingSectionNew from "@/components/common/PricingSectionNew";
+import TestimonialQuote from "@/components/common/TestimonialQuote";
+import EmployerCTA from "@/components/common/EmployerCTA";
+import RotatingBanner from "@/components/common/RotatingBanner";
 
 export default function Home() {
   return (
