@@ -23,12 +23,12 @@ export default function Home() {
         <TopCompaniesHiring />
         <ThreeStepsExact />
         <JobHuntingAutomated />
-        <CompleteAISystemExact />
-        <AIFeaturedCards />
-        <PricingExact />
-        <TestimonialSection />
-        <EmployerCTAExact />
-        <ScrollingBanner />
+        <CompleteAISystem />
+        <AIDrivenSection />
+        <PricingSectionNew />
+        <TestimonialQuote />
+        <EmployerCTA />
+        <RotatingBanner />
       </Layout>
     </>
   );
