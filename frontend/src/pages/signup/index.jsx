@@ -68,20 +68,16 @@ const Signup = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-orange-50 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-white">
       <Head>
         <title>Sign Up - Jobocate</title>
         <meta name="description" content="Create your Jobocate account and start your AI-powered job search" />
       </Head>
 
-      {/* Animated background blobs */}
-      <div className="absolute inset-0">
-        <div className="absolute top-20 right-10 w-96 h-96 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-        <div className="absolute top-40 left-10 w-96 h-96 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-20 left-1/2 w-96 h-96 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-md">
+      <div className="min-h-screen flex">
+        {/* Left Side - Form */}
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-block">
