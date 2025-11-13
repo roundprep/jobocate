@@ -68,9 +68,7 @@ const Login = () => {
         </div>
 
         {/* Main Card */}
-        <div className="relative">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 via-purple-500 to-pink-500 rounded-3xl blur opacity-20"></div>
-          <div className="relative bg-white p-8 md:p-10 rounded-3xl shadow-2xl">
+        <div className="w-full">
             
             {/* OAuth Buttons */}
             <div className="space-y-3 mb-6">
