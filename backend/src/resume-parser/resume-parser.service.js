@@ -1,8 +1,10 @@
-const pdfParse = require('pdf-parse');
+const PDFExtract = require('pdf.js-extract').PDFExtract;
 const mammoth = require('mammoth');
 const fs = require('fs').promises;
 const path = require('path');
 const aiProvider = require('../ai-services/ai-provider');
+
+const pdfExtract = new PDFExtract();
 
 class ResumeParserService {
   constructor() {
