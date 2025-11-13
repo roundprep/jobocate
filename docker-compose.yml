@@ -79,3 +79,5 @@ networks:
 volumes:
   mongodb_data:
     driver: local
+  backend-uploads:
+    driver: local
