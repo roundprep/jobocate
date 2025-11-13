@@ -261,6 +261,7 @@ const Signup = () => {
               </span>
             </Link>
           </div>
+          </div>
         </div>
 
         {/* Right Side - Branding */}
