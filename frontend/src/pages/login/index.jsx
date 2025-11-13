@@ -199,6 +199,7 @@ const Login = () => {
               </span>
             </Link>
           </div>
+          </div>
         </div>
 
         {/* Right Side - Branding */}
