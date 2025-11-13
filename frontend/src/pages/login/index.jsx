@@ -30,13 +30,13 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    // TODO: Implement Google OAuth
-    console.log('Google login clicked');
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+    window.location.href = `${backendUrl}/api/auth/google`;
   };
 
   const handleLinkedInLogin = () => {
-    // TODO: Implement LinkedIn OAuth
-    console.log('LinkedIn login clicked');
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+    window.location.href = `${backendUrl}/api/auth/linkedin`;
   };
 
   return (
