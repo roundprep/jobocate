@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: jobocate-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=jobocate
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - jobocate-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/jobocate --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobocate-backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - NODE_ENV=development
+      - PORT=8001
+      - MONGODB_URI=mongodb://mongodb:27017/jobocate
+      - JWT_SECRET=jobocate_jwt_secret_key_2024
+      - JWT_EXPIRES_IN=7d
+      - FRONTEND_URL=http://localhost:3000
+      - GOOGLE_CLIENT_ID=542775705311-cc194ucgvl2v1fbjenlngmskf5vsed1i.apps.googleusercontent.com
+      - GOOGLE_CLIENT_SECRET=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
+      - GOOGLE_REDIRECT_URI=http://localhost:8001/api/auth/google/callback
+      - LINKEDIN_CLIENT_ID=${LINKEDIN_CLIENT_ID:-}
+      - LINKEDIN_CLIENT_SECRET=${LINKEDIN_CLIENT_SECRET:-}
+      - LINKEDIN_REDIRECT_URI=http://localhost:8001/api/auth/linkedin/callback
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - jobocate-network
+    command: npm run dev
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jobocate-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_BACKEND_URL=http://localhost:8001
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - jobocate-network
+    command: npm run dev
+
+networks:
+  jobocate-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
