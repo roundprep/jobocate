@@ -14,18 +14,31 @@ class AIProvider {
   }
 
   initializeClients() {
-    // Initialize OpenAI
-    if (this.provider === 'openai' || process.env.OPENAI_API_KEY) {
-      this.openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY || process.env.EMERGENT_LLM_KEY,
-      });
-    }
+    try {
+      // Initialize OpenAI
+      if (this.provider === 'openai' || process.env.OPENAI_API_KEY || process.env.EMERGENT_LLM_KEY) {
+        const apiKey = process.env.OPENAI_API_KEY || process.env.EMERGENT_LLM_KEY;
+        if (apiKey) {
+          this.openai = new OpenAI({ apiKey });
+          console.log('✅ OpenAI client initialized');
+        } else {
+          console.warn('⚠️ OpenAI API key not found. AI features will not work.');
+        }
+      }
 
-    // Initialize Anthropic
-    if (this.provider === 'anthropic' || process.env.ANTHROPIC_API_KEY) {
-      this.anthropic = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      });
+      // Initialize Anthropic
+      if (this.provider === 'anthropic' || process.env.ANTHROPIC_API_KEY) {
+        if (process.env.ANTHROPIC_API_KEY) {
+          this.anthropic = new Anthropic({
+            apiKey: process.env.ANTHROPIC_API_KEY,
+          });
+          console.log('✅ Anthropic client initialized');
+        } else {
+          console.warn('⚠️ Anthropic API key not found.');
+        }
+      }
+    } catch (error) {
+      console.error('Error initializing AI clients:', error.message);
     }
   }
 
