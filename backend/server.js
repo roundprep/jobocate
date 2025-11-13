@@ -108,8 +108,29 @@ passport.deserializeUser(async (id, done) => {
 app.use('/api', apiRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Server is running' });
+app.get('/health', async (req, res) => {
+  try {
+    const health = {
+      status: 'ok',
+      message: 'Server is running',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      mongodb: 'disconnected',
+      aiProvider: process.env.AI_PROVIDER || 'openai',
+    };
+
+    // Check MongoDB connection
+    if (mongoose.connection.readyState === 1) {
+      health.mongodb = 'connected';
+    }
+
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+    });
+  }
 });
 
 // Error handling
