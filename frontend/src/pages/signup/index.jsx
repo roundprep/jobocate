@@ -211,36 +211,6 @@ const Signup = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  I'm signing up as
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, role: 'ROLE_CANDIDATE' })}
-                    className={`py-3 rounded-xl font-semibold transition-all ${
-                      formData.role === 'ROLE_CANDIDATE'
-                        ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Job Seeker
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, role: 'ROLE_EMPLOYER' })}
-                    className={`py-3 rounded-xl font-semibold transition-all ${
-                      formData.role === 'ROLE_EMPLOYER'
-                        ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white shadow-lg'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Employer
-                  </button>
-                </div>
-              </div>
-
               <button
                 type="submit"
                 disabled={loading}
