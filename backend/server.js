@@ -49,46 +49,60 @@ mongoose.connect(MONGODB_URI)
 });
 
 // Passport Google Strategy
+// Passport Google Strategy
 passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:8001/api/auth/google/callback'
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
-      let user = await User.findOne({ googleId: profile.id });
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:8001/api/auth/google/callback'
+},
+async (accessToken, refreshToken, profile, done) => {
+  console.log('🟡 [Passport Strategy] Google profile received');
+  console.log('🟡 [Passport Strategy] Profile ID:', profile.id);
+  console.log('🟡 [Passport Strategy] Profile email:', profile.emails?.[0]?.value);
+  console.log('🟡 [Passport Strategy] Profile name:', profile.displayName);
+  
+  try {
+    let user = await User.findOne({ googleId: profile.id });
+    console.log('🟡 [Passport Strategy] Existing user found by googleId:', !!user);
+    
+    if (!user) {
+      user = await User.findOne({ email: profile.emails[0].value });
+      console.log('🟡 [Passport Strategy] Existing user found by email:', !!user);
       
-      if (!user) {
-        user = await User.findOne({ email: profile.emails[0].value });
-        
-        if (user) {
-          user.googleId = profile.id;
-          user.picture = profile.photos[0]?.value || user.picture;
-          user.provider = 'google';
-          user.lastLogin = new Date();
-          await user.save();
-        } else {
-          user = await User.create({
-            googleId: profile.id,
-            email: profile.emails[0].value,
-            name: profile.displayName,
-            picture: profile.photos[0]?.value,
-            provider: 'google',
-            role: 'ROLE_CANDIDATE',
-            lastLogin: new Date(),
-          });
-        }
-      } else {
-        user.lastLogin = new Date();
+      if (user) {
+        user.googleId = profile.id;
         user.picture = profile.photos[0]?.value || user.picture;
+        user.provider = 'google';
+        user.lastLogin = new Date();
         await user.save();
+        console.log('🟡 [Passport Strategy] Updated existing user');
+      } else {
+        user = await User.create({
+          googleId: profile.id,
+          email: profile.emails[0].value,
+          name: profile.displayName,
+          picture: profile.photos[0]?.value,
+          provider: 'google',
+          role: 'ROLE_CANDIDATE',
+          lastLogin: new Date(),
+        });
+        console.log('🟡 [Passport Strategy] Created new user:', user._id);
       }
-      
-      return done(null, user);
-    } catch (error) {
-      return done(error, null);
+    } else {
+      user.lastLogin = new Date();
+      user.picture = profile.photos[0]?.value || user.picture;
+      await user.save();
+      console.log('🟡 [Passport Strategy] Updated existing user login time');
     }
+    
+    console.log('🟡 [Passport Strategy] Returning user:', user._id);
+    return done(null, user);
+  } catch (error) {
+    console.error('❌ [Passport Strategy] Error:', error);
+    console.error('❌ [Passport Strategy] Error stack:', error.stack);
+    return done(error, null);
   }
+}
 ));
 
 passport.serializeUser((user, done) => {
@@ -137,7 +151,7 @@ app.get('/health', async (req, res) => {
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 8000;
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 AI Provider: ${process.env.AI_PROVIDER || 'openai'}`);

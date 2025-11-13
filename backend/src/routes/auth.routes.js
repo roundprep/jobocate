@@ -20,12 +20,15 @@ const generateToken = (user) => {
 };
 
 // Google OAuth
-router.get('/google',
+router.get('/google', (req, res, next) => {
+  console.log('🟢 [Google OAuth] Initiate request received');
+  console.log('🟢 [Google OAuth] Request headers:', req.headers);
+  console.log('🟢 [Google OAuth] Redirecting to Google...');
   passport.authenticate('google', { 
     scope: ['profile', 'email'],
     prompt: 'select_account'
-  })
-);
+  })(req, res, next);
+});
 
 router.get('/google/callback',
   passport.authenticate('google', { 
@@ -33,13 +36,47 @@ router.get('/google/callback',
     session: false
   }),
   (req, res) => {
-    const token = generateToken(req.user);
-    res.redirect(`${process.env.FRONTEND_URL}/auth/success?token=${token}&user=${encodeURIComponent(JSON.stringify({
-      id: req.user._id,
-      email: req.user.email,
-      name: req.user.name,
-      picture: req.user.picture
-    }))}`);
+    console.log('🟢 [Google Callback] Callback received');
+    console.log('🟢 [Google Callback] Request user:', req.user ? 'Present' : 'Missing');
+    
+    if (!req.user) {
+      console.error('❌ [Google Callback] No user data in request');
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=no_user_data`);
+    }
+    
+    console.log('🟢 [Google Callback] User ID:', req.user._id);
+    console.log('🟢 [Google Callback] User email:', req.user.email);
+    console.log('🟢 [Google Callback] User name:', req.user.name);
+    
+    try {
+      const token = generateToken(req.user);
+      console.log('🟢 [Google Callback] Token generated, length:', token.length);
+      
+      const userData = {
+        id: req.user._id,
+        email: req.user.email,
+        name: req.user.name,
+        picture: req.user.picture
+      };
+      console.log('🟢 [Google Callback] User data to send:', userData);
+      
+      const encodedUser = encodeURIComponent(JSON.stringify(userData));
+      console.log('🟢 [Google Callback] Encoded user length:', encodedUser.length);
+      
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const redirectUrl = `${frontendUrl}/auth/success?token=${token}&user=${encodedUser}`;
+      
+      console.log('🟢 [Google Callback] Frontend URL:', frontendUrl);
+      console.log('🟢 [Google Callback] Redirect URL length:', redirectUrl.length);
+      console.log('🟢 [Google Callback] Redirect URL preview:', redirectUrl.substring(0, 200));
+      
+      res.redirect(redirectUrl);
+      console.log('🟢 [Google Callback] Redirect sent successfully');
+    } catch (error) {
+      console.error('❌ [Google Callback] Error generating token or redirecting:', error);
+      console.error('❌ [Google Callback] Error stack:', error.stack);
+      res.redirect(`${process.env.FRONTEND_URL}/login?error=token_generation_failed`);
+    }
   }
 );
 
