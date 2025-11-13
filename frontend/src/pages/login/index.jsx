@@ -184,40 +184,62 @@ const Login = () => {
             <p className="mt-8 text-center text-gray-600">
               Don't have an account?{' '}
               <Link href="/signup">
-                <span className="font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 cursor-pointer">
+                <span className="font-bold text-orange-600 hover:text-orange-700 cursor-pointer">
                   Sign up for free →
                 </span>
               </Link>
             </p>
           </div>
+
+          {/* Back to Home */}
+          <div className="mt-8 text-center">
+            <Link href="/">
+              <span className="text-gray-500 hover:text-gray-700 cursor-pointer text-sm">
+                ← Back to home
+              </span>
+            </Link>
+          </div>
         </div>
 
-        {/* Back to Home */}
-        <div className="mt-6 text-center">
-          <Link href="/">
-            <span className="text-gray-600 hover:text-gray-900 cursor-pointer">
-              ← Back to home
-            </span>
-          </Link>
+        {/* Right Side - Branding */}
+        <div className="hidden lg:flex flex-1 bg-gradient-to-br from-orange-500 via-red-500 to-purple-600 p-12 items-center justify-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-black opacity-10"></div>
+          <div className="relative z-10 text-white max-w-lg">
+            <h2 className="text-5xl font-bold mb-6">
+              Land Your Dream Job Faster
+            </h2>
+            <p className="text-xl mb-8 text-white/90">
+              AI-powered job search that gets you 10x more interviews. Stop applying manually, start interviewing.
+            </p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-lg">AI-optimized resumes for every job</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-lg">Auto-apply to 1000s of jobs</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-lg">Track applications in one place</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes blob {
-          0%, 100% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-        }
-        .animate-blob {
-          animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-      `}</style>
     </div>
   );
 };
