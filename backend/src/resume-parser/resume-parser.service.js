@@ -61,9 +61,24 @@ class ResumeParserService {
 
   async extractPDFText(buffer) {
     try {
-      const data = await pdfParse(buffer);
-      return data.text;
+      // Save buffer to temp file (pdf.js-extract requires file path)
+      const tempPath = path.join(this.uploadDir, `temp-${Date.now()}.pdf`);
+      await fs.writeFile(tempPath, buffer);
+      
+      // Extract text
+      const data = await pdfExtract.extract(tempPath, {});
+      
+      // Delete temp file
+      await fs.unlink(tempPath).catch(() => {});
+      
+      // Combine all text from all pages
+      const text = data.pages
+        .map(page => page.content.map(item => item.str).join(' '))
+        .join('\n');
+      
+      return text;
     } catch (error) {
+      console.error('PDF extraction error:', error);
       throw new Error('Failed to parse PDF file');
     }
   }
