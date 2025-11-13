@@ -234,11 +234,11 @@ const Signup = () => {
             <p className="mt-6 text-center text-sm text-gray-600">
               By signing up, you agree to our{' '}
               <Link href="/terms">
-                <span className="text-purple-600 hover:text-purple-700 cursor-pointer underline">Terms of Service</span>
+                <span className="text-orange-600 hover:text-orange-700 cursor-pointer underline">Terms of Service</span>
               </Link>
               {' '}and{' '}
               <Link href="/privacy">
-                <span className="text-purple-600 hover:text-purple-700 cursor-pointer underline">Privacy Policy</span>
+                <span className="text-orange-600 hover:text-orange-700 cursor-pointer underline">Privacy Policy</span>
               </Link>
             </p>
 
