@@ -55,19 +55,20 @@ const Login = () => {
 
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-block">
-            <div className="relative w-48 h-14 mx-auto mb-3 bg-black rounded-lg px-4 py-2">
+        <div className="text-center mb-10">
+          <Link href="/" className="inline-block mb-4">
+            <div className="relative w-40 h-12 mx-auto">
               <Image 
                 src={logo} 
                 alt="Advocate Logo" 
                 fill
-                className="object-contain p-2"
+                className="object-contain"
                 priority
               />
             </div>
           </Link>
-          <p className="text-gray-600 font-medium">Welcome back! Log in to continue</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h1>
+          <p className="text-gray-600">Log in to continue your job search</p>
         </div>
 
         {/* Main Card */}
