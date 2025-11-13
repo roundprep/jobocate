@@ -66,6 +66,6 @@ const jobSchema = new mongoose.Schema({
 jobSchema.index({ title: 'text', description: 'text', companyName: 'text' });
 jobSchema.index({ skills: 1 });
 jobSchema.index({ location: 1 });
-jobSchema.index({ externalId: 1 });
+// externalId already has unique index from schema definition
 
 module.exports = mongoose.model('Job', jobSchema);
