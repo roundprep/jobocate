@@ -32,9 +32,18 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
   };
 
+  const setAuthData = (authData) => {
+    if (authData.token && authData.user) {
+      localStorage.setItem('authToken', authData.token);
+      localStorage.setItem('user', JSON.stringify(authData.user));
+      setUser(authData.user);
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('token'); // Also remove 'token' key used by OAuth
     setUser(null);
     router.push('/login');
   };
@@ -44,7 +53,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, hasRole, setAuthData }}>
       {!loading && children}
     </AuthContext.Provider>
   );
