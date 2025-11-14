@@ -1,9 +1,10 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '@/config/api';
 
 // Helper function to get auth token
 const getAuthToken = () => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('token');
+    // Check both 'authToken' and 'token' for backward compatibility
+    return localStorage.getItem('authToken') || localStorage.getItem('token');
   }
   return null;
 };

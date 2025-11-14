@@ -254,7 +254,8 @@ function PostJob() {
       console.log('Submitting job:', jobData);
       
       // Make API call to post job
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/employer/jobs`, {
+      const { API_URL } = await import('@/config/api');
+      const response = await fetch(`${API_URL}/api/employer/jobs`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

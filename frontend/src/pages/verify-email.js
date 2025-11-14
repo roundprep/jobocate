@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Head from 'next/head';
+import { API_URL } from '@/config/api';
 
 export default function VerifyEmail() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function VerifyEmail() {
       if (!token || !email) return;
 
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-email`, {
+        const response = await fetch(`${API_URL}/api/auth/verify-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

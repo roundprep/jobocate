@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from 'next/router';
 import { toast } from 'react-toastify';
 import { useAuth } from '@/context/AuthContext';
+import { API_URL } from '@/config/api';
 import 'react-toastify/dist/ReactToastify.css';
 import mobile from '@/assets/login/mobile.png'
 import Link from "next/link";
@@ -50,7 +51,7 @@ export default function Login() {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate network delay
       
       // Make the actual API call
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

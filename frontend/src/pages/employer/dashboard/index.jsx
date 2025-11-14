@@ -1,247 +1,284 @@
-import { useState } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
+import DashboardLayout from '@/components/layout/DashboardLayout';
+import ProfileCompletionBanner from '@/components/profile/ProfileCompletionBanner';
 import { 
-  BriefcaseIcon, 
-  UsersIcon, 
-  DocumentTextIcon, 
-  ChartBarIcon,
-  CalendarIcon,
-  ChatBubbleLeftRightIcon
+  ArrowUpIcon,
+  ArrowDownIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
-import EmployerLayout from '@/components/layout/EmployerLayout';
+import { useAuth } from '@/context/AuthContext';
+import { useState } from 'react';
+import { Table, TableHead, TableBody, TableRow, TableHeader, TableCell } from '@/components/catalyst/table';
+import { Button } from '@/components/catalyst/button';
+import { Link } from '@/components/catalyst/link';
+import { Badge } from '@/components/catalyst/badge';
 
 export default function EmployerDashboard() {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const { user } = useAuth();
+  const userName = user?.name || 'there';
+  const [timePeriod, setTimePeriod] = useState('Last week');
+  
+  const timePeriods = ['Last week', 'Last two weeks', 'Last month', 'Last quarter'];
+  
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
 
-  // Sample data - replace with actual data from your API
   const stats = [
-    { name: 'Total Jobs Posted', value: '24', icon: BriefcaseIcon, change: '+12%', changeType: 'increase' },
-    { name: 'Applications', value: '142', icon: DocumentTextIcon, change: '+8%', changeType: 'increase' },
-    { name: 'Active Candidates', value: '89', icon: UsersIcon, change: '+5%', changeType: 'increase' },
-    { name: 'Interview Scheduled', value: '12', icon: CalendarIcon, change: '+2', changeType: 'neutral' },
+    { 
+      name: 'Total jobs posted', 
+      value: '24', 
+      change: '+12%',
+      changeType: 'positive'
+    },
+    { 
+      name: 'Applications received', 
+      value: '142', 
+      change: '+15%',
+      changeType: 'positive'
+    },
+    { 
+      name: 'Active candidates', 
+      value: '89', 
+      change: '+5%',
+      changeType: 'positive'
+    },
+    { 
+      name: 'Total revenue', 
+      value: '$45.2K', 
+      change: '+8.2%',
+      changeType: 'positive'
+    },
   ];
 
   const recentJobs = [
-    { id: 1, title: 'Senior React Developer', status: 'Active', applications: 42, date: '2023-11-15' },
-    { id: 2, title: 'UX/UI Designer', status: 'Draft', applications: 0, date: '2023-11-10' },
-    { id: 3, title: 'Product Manager', status: 'Closed', applications: 38, date: '2023-11-05' },
+    {
+      id: 1001,
+      title: 'Senior Software Engineer',
+      company: 'Your Company',
+      status: 'Active',
+      date: '2024-05-09',
+      applications: 24,
+      views: 156,
+      logo: 'SE',
+    },
+    {
+      id: 1002,
+      title: 'Product Designer',
+      company: 'Your Company',
+      status: 'Active',
+      date: '2024-05-05',
+      applications: 18,
+      views: 203,
+      logo: 'PD',
+    },
+    {
+      id: 1003,
+      title: 'Frontend Developer',
+      company: 'Your Company',
+      status: 'Draft',
+      date: '2024-04-28',
+      applications: 0,
+      views: 12,
+      logo: 'FD',
+    },
+    {
+      id: 1004,
+      title: 'Backend Engineer',
+      company: 'Your Company',
+      status: 'Active',
+      date: '2024-04-23',
+      applications: 32,
+      views: 189,
+      logo: 'BE',
+    },
+    {
+      id: 1005,
+      title: 'DevOps Specialist',
+      company: 'Your Company',
+      status: 'Active',
+      date: '2024-04-18',
+      applications: 15,
+      views: 134,
+      logo: 'DS',
+    },
+    {
+      id: 1006,
+      title: 'Data Scientist',
+      company: 'Your Company',
+      status: 'Active',
+      date: '2024-04-14',
+      applications: 28,
+      views: 167,
+      logo: 'DT',
+    },
+    {
+      id: 1007,
+      title: 'UX Researcher',
+      company: 'Your Company',
+      status: 'Draft',
+      date: '2024-04-10',
+      applications: 0,
+      views: 8,
+      logo: 'UX',
+    },
+    {
+      id: 1008,
+      title: 'Mobile Developer',
+      company: 'Your Company',
+      status: 'Active',
+      date: '2024-04-06',
+      applications: 21,
+      views: 145,
+      logo: 'MD',
+    },
   ];
 
-  const recentActivities = [
-    { id: 1, type: 'application', message: 'New application received for Senior React Developer', time: '2 hours ago' },
-    { id: 2, type: 'job', message: 'You posted a new job: Full Stack Developer', time: '1 day ago' },
-    { id: 3, type: 'message', message: 'You have 3 unread messages from candidates', time: '2 days ago' },
-  ];
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const getStatusBadge = (status) => {
+    const styles = {
+      'Active': 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200',
+      'Draft': 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200',
+      'Closed': 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200',
+    };
+    return styles[status] || styles['Draft'];
+  };
 
   return (
-    <EmployerLayout>
+    <>
       <Head>
         <title>Employer Dashboard | Jobocate</title>
         <meta name="description" content="Manage your job postings and candidates" />
       </Head>
-
-      <div className="py-6">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+      <DashboardLayout>
+        <div className="py-8">
+        <ProfileCompletionBanner />
+        
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-white">
+            {getGreeting()}, {userName}
+          </h1>
         </div>
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
-          {/* Stats */}
-          <div className="mt-8">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {stats.map((stat) => (
-                <div
-                  key={stat.name}
-                  className="relative overflow-hidden rounded-lg bg-white px-4 pt-5 pb-12 shadow sm:px-6 sm:pt-6"
-                >
-                  <dt>
-                    <div className="absolute rounded-md bg-orange-500 p-3">
-                      <stat.icon className="h-6 w-6 text-white" aria-hidden="true" />
+
+        {/* Time Period Selector */}
+        <div className="mb-8">
+          <div className="flex items-center gap-2">
+            {timePeriods.map((period) => (
+              <Button
+                key={period}
+                onClick={() => setTimePeriod(period)}
+                color={timePeriod === period ? 'dark/zinc' : undefined}
+                outline={timePeriod !== period}
+                plain={timePeriod !== period}
+              >
+                {period}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* Overview Section */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-zinc-950 dark:text-white mb-6">Overview</h2>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.map((stat) => (
+              <div 
+                key={stat.name} 
+                className="rounded-lg border border-zinc-950/10 bg-white p-6 dark:border-white/10 dark:bg-zinc-900"
+              >
+                <dt className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-2">
+                  {stat.name}
+                </dt>
+                <dd className="flex items-baseline justify-between">
+                  <div className="text-2xl font-semibold text-zinc-950 dark:text-white">
+                    {stat.value}
+                  </div>
+                  <div className={`flex items-baseline text-sm font-semibold ${
+                    stat.changeType === 'positive' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                  }`}>
+                    {stat.changeType === 'positive' ? (
+                      <ArrowUpIcon className="h-4 w-4 mr-0.5" />
+                    ) : (
+                      <ArrowDownIcon className="h-4 w-4 mr-0.5" />
+                    )}
+                    {stat.change}
+                  </div>
+                </dd>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  from {timePeriod.toLowerCase()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Jobs Table */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">Recent jobs</h2>
+            <Button href="/employer/jobs/post" color="sky">
+              <PlusIcon data-slot="icon" className="h-4 w-4" />
+              Post New Job
+            </Button>
+          </div>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableHeader>Job</TableHeader>
+                <TableHeader>Position</TableHeader>
+                <TableHeader>Status</TableHeader>
+                <TableHeader>Applications</TableHeader>
+                <TableHeader>Views</TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {recentJobs.slice(0, 5).map((job) => (
+                <TableRow key={job.id} href={`/employer/jobs/${job.id}`}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0 h-10 w-10 rounded-lg bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-white font-semibold text-sm">
+                        {job.logo}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">#{job.id}</div>
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(job.date)}</div>
+                      </div>
                     </div>
-                    <p className="ml-16 truncate text-sm font-medium text-gray-500">{stat.name}</p>
-                  </dt>
-                  <dd className="ml-16 flex items-baseline pb-6 sm:pb-7">
-                    <p className="text-2xl font-semibold text-gray-900">{stat.value}</p>
-                    <p
-                      className={`ml-2 flex items-baseline text-sm font-semibold ${
-                        stat.changeType === 'increase' ? 'text-green-600' : 'text-gray-500'
-                      }`}
-                    >
-                      {stat.change}
-                    </p>
-                  </dd>
-                </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium">{job.title}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge color={job.status === 'Active' ? 'emerald' : job.status === 'Draft' ? 'yellow' : 'zinc'}>
+                      {job.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Link href={`/employer/jobs/${job.id}/applications`} className="font-medium">
+                      {job.applications}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{job.views}</TableCell>
+                </TableRow>
               ))}
-            </div>
-          </div>
-
-          {/* Main Content */}
-          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Recent Jobs */}
-            <div className="lg:col-span-2">
-              <div className="overflow-hidden bg-white shadow sm:rounded-lg">
-                <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium leading-6 text-gray-900">Recent Jobs</h3>
-                    <Link href="/employer/jobs" className="text-sm font-medium text-orange-600 hover:text-orange-500">
-                      View all
-                    </Link>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Job Title
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Applications
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Date
-                        </th>
-                        <th scope="col" className="relative px-6 py-3">
-                          <span className="sr-only">Actions</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {recentJobs.map((job) => (
-                        <tr key={job.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{job.title}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              job.status === 'Active' ? 'bg-green-100 text-green-800' :
-                              job.status === 'Draft' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {job.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {job.applications} {job.applications === 1 ? 'application' : 'applications'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(job.date).toISOString().split('T')[0].split('-').reverse().join('/')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <Link href={`/employer/jobs/${job.id}`} className="text-orange-600 hover:text-orange-900">
-                              View
-                            </Link>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="bg-gray-50 px-4 py-3 text-right sm:px-6">
-                  <Link
-                    href="/employer/jobs/post"
-                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-                  >
-                    Post a New Job
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div>
-              <div className="overflow-hidden bg-white shadow sm:rounded-lg">
-                <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-                  <h3 className="text-lg font-medium leading-6 text-gray-900">Recent Activity</h3>
-                </div>
-                <div className="px-4 py-5 sm:p-6">
-                  <div className="flow-root">
-                    <ul className="-mb-8">
-                      {recentActivities.map((activity, activityIdx) => (
-                        <li key={activity.id}>
-                          <div className="relative pb-8">
-                            {activityIdx !== recentActivities.length - 1 ? (
-                              <span
-                                className="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"
-                                aria-hidden="true"
-                              />
-                            ) : null}
-                            <div className="relative flex space-x-3">
-                              <div>
-                                <span
-                                  className={`h-8 w-8 rounded-full flex items-center justify-center ring-8 ring-white ${
-                                    activity.type === 'application' ? 'bg-green-500' :
-                                    activity.type === 'job' ? 'bg-blue-500' : 'bg-purple-500'
-                                  }`}
-                                >
-                                  {activity.type === 'application' ? (
-                                    <DocumentTextIcon className="h-5 w-5 text-white" aria-hidden="true" />
-                                  ) : activity.type === 'job' ? (
-                                    <BriefcaseIcon className="h-5 w-5 text-white" aria-hidden="true" />
-                                  ) : (
-                                    <ChatBubbleLeftRightIcon className="h-5 w-5 text-white" aria-hidden="true" />
-                                  )}
-                                </span>
-                              </div>
-                              <div className="flex min-w-0 flex-1 justify-between space-x-4 pt-1.5">
-                                <div>
-                                  <p className="text-sm text-gray-800">
-                                    {activity.message}
-                                  </p>
-                                </div>
-                                <div className="whitespace-nowrap text-right text-sm text-gray-500">
-                                  <time dateTime={activity.time}>{activity.time}</time>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="mt-6">
-                    <Link
-                      href="/employer/activity"
-                      className="flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
-                    >
-                      View all activity
-                    </Link>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Actions */}
-              <div className="mt-6 overflow-hidden bg-white shadow sm:rounded-lg">
-                <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-                  <h3 className="text-lg font-medium leading-6 text-gray-900">Quick Actions</h3>
-                </div>
-                <div className="px-4 py-5 sm:p-6">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Link
-                      href="/employer/jobs/post"
-                      className="flex flex-col items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-6 text-center hover:bg-gray-50"
-                    >
-                      <BriefcaseIcon className="h-8 w-8 text-orange-500" aria-hidden="true" />
-                      <span className="mt-2 block text-sm font-medium text-gray-900">Post a Job</span>
-                    </Link>
-                    <Link
-                      href="/employer/candidates"
-                      className="flex flex-col items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-6 text-center hover:bg-gray-50"
-                    >
-                      <UsersIcon className="h-8 w-8 text-orange-500" aria-hidden="true" />
-                      <span className="mt-2 block text-sm font-medium text-gray-900">Browse Candidates</span>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
+            </TableBody>
+          </Table>
+          <div className="mt-4">
+            <Link href="/employer/jobs" className="text-sm font-medium text-sky-600 dark:text-sky-400">
+              View all jobs →
+            </Link>
           </div>
         </div>
-      </div>
-    </EmployerLayout>
+        </div>
+      </DashboardLayout>
+    </>
   );
 }

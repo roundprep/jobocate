@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import logo from '@/assets/advocate_logo.png';
 import {
   HomeIcon,
   BriefcaseIcon,
@@ -24,6 +26,8 @@ function EmployerLayoutContent({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef(null);
+  
+  const dashboardHome = '/employer/dashboard';
 
   // Navigation items
   const navigation = [
@@ -63,7 +67,17 @@ function EmployerLayoutContent({ children }) {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
         <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white">
           <div className="flex h-16 items-center justify-between px-4 border-b border-gray-200">
-            <div className="text-xl font-bold text-orange-600">Jobocate</div>
+            <Link href={dashboardHome} className="flex items-center">
+              <div className="relative w-28 h-10">
+                <Image 
+                  src={logo} 
+                  alt="Jobocate Logo" 
+                  fill
+                  className="object-contain object-left"
+                  priority
+                />
+              </div>
+            </Link>
             <button onClick={() => setSidebarOpen(false)} className="text-gray-500 hover:text-gray-600">
               <XMarkIcon className="h-6 w-6" />
             </button>
@@ -83,7 +97,17 @@ function EmployerLayoutContent({ children }) {
       <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
         <div className="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
           <div className="flex h-16 items-center px-6 border-b border-gray-100">
-            <Link href="/employer/dashboard" className="text-2xl font-bold text-orange-600">Jobocate</Link>
+            <Link href={dashboardHome} className="flex items-center">
+              <div className="relative w-32 h-12">
+                <Image 
+                  src={logo} 
+                  alt="Jobocate Logo" 
+                  fill
+                  className="object-contain object-left"
+                  priority
+                />
+              </div>
+            </Link>
           </div>
           <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
             {navigation.map((item) => (

@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth } from '@/context/AuthContext';
 
 const AuthSuccess = () => {
   const router = useRouter();
   const { setAuthData } = useAuth();
+  const [message, setMessage] = useState({ title: 'Completing sign in...', subtitle: 'Please wait...' });
 
   useEffect(() => {
-    const processAuth = () => {
+    const processAuth = async () => {
       console.log('🔵 [Auth Success] Page loaded');
       console.log('🔵 [Auth Success] Full URL:', window.location.href);
       console.log('🔵 [Auth Success] Search params:', window.location.search);
@@ -16,51 +17,151 @@ const AuthSuccess = () => {
       const token = urlParams.get('token');
       const userString = urlParams.get('user');
       
-      console.log('🔵 [Auth Success] Token received:', token ? `Yes (length: ${token.length})` : 'No');
-      console.log('🔵 [Auth Success] Token preview:', token ? `${token.substring(0, 30)}...` : 'N/A');
-      console.log('🔵 [Auth Success] User string received:', userString ? `Yes (length: ${userString.length})` : 'No');
-      console.log('🔵 [Auth Success] User string preview:', userString ? `${userString.substring(0, 100)}...` : 'N/A');
+      // Check if user existed before (existing user has token in localStorage)
+      const hadExistingToken = !!localStorage.getItem('authToken');
       
-      // Log all URL parameters
-      console.log('🔵 [Auth Success] All URL params:');
-      urlParams.forEach((value, key) => {
-        console.log(`  - ${key}: ${value.substring(0, 50)}${value.length > 50 ? '...' : ''}`);
-      });
+      console.log('🔵 [Auth Success] Token received:', token ? `Yes (length: ${token.length})` : 'No');
+      console.log('🔵 [Auth Success] User string received:', userString ? `Yes (length: ${userString.length})` : 'No');
+      console.log('🔵 [Auth Success] Had existing token:', hadExistingToken);
   
-      if (token && userString) {
+      // Check if we have token in URL
+      if (token) {
         try {
-          console.log('🔵 [Auth Success] Parsing user data...');
-          const user = JSON.parse(decodeURIComponent(userString));
-          console.log('🔵 [Auth Success] Parsed user:', user);
+          let user = null;
+          
+          // If user data is provided in URL, use it
+          if (userString) {
+            console.log('🔵 [Auth Success] Parsing user data...');
+            user = JSON.parse(decodeURIComponent(userString));
+            console.log('🔵 [Auth Success] Parsed user:', user);
+          }
+          
+          // Set initial message (will be updated after fetching profile)
+          setMessage({
+            title: 'Logging in, please wait...',
+            subtitle: 'Almost there!'
+          });
           
           // Store token and user data
           console.log('🔵 [Auth Success] Storing token and user in localStorage...');
-          localStorage.setItem('token', token);
-          localStorage.setItem('user', JSON.stringify(user));
+          localStorage.setItem('authToken', token);
+          if (user) {
+            localStorage.setItem('user', JSON.stringify(user));
+          }
           console.log('🔵 [Auth Success] Data stored successfully');
+          
+          // Fetch full user profile to check if user is new
+          let fullUser = user;
+          try {
+            const { API_URL } = require('@/config/api');
+            const profileResponse = await fetch(`${API_URL}/api/users/profile`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+              },
+            });
+            
+            if (profileResponse.ok) {
+              const profileData = await profileResponse.json();
+              if (profileData.user) {
+                fullUser = profileData.user;
+                localStorage.setItem('user', JSON.stringify(fullUser));
+                
+                // Update message based on profile completeness
+                const hasProfileData = fullUser.phone || fullUser.location || fullUser.summary || 
+                                      (fullUser.skills && fullUser.skills.length > 0) ||
+                                      (fullUser.experience && fullUser.experience.length > 0) ||
+                                      (fullUser.education && fullUser.education.length > 0);
+                
+                if (!hasProfileData && !hadExistingToken) {
+                  setMessage({
+                    title: 'Setting up your account...',
+                    subtitle: 'Please wait while we set up your account'
+                  });
+                } else {
+                  setMessage({
+                    title: 'Logging in, please wait...',
+                    subtitle: 'Almost there!'
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            console.warn('⚠️ [Auth Success] Could not fetch profile, using basic user data:', error);
+            // Use the basic user data we have
+            if (!hadExistingToken) {
+              setMessage({
+                title: 'Setting up your account...',
+                subtitle: 'Please wait while we set up your account'
+              });
+            }
+          }
           
           // Update auth context if available
           if (setAuthData) {
             console.log('🔵 [Auth Success] Updating auth context...');
-            setAuthData({ token, user });
+            setAuthData({ token, user: fullUser });
             console.log('🔵 [Auth Success] Auth context updated');
           } else {
             console.warn('⚠️ [Auth Success] setAuthData function not available');
           }
           
-          // Redirect to dashboard
+          // Small delay to ensure state is updated, then redirect
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Redirect to dashboard based on user role
+          const redirectPath = fullUser?.role === 'ROLE_EMPLOYER' 
+            ? '/employer/dashboard' 
+            : '/candidate/dashboard';
           console.log('🔵 [Auth Success] Redirecting to dashboard...');
-          router.push('/candidate/dashboard');
+          router.replace(redirectPath);
         } catch (error) {
           console.error('❌ [Auth Success] Error processing auth:', error);
           console.error('❌ [Auth Success] Error stack:', error.stack);
-          router.push('/login?error=auth_processing_failed');
+          router.replace('/login?error=auth_processing_failed');
         }
       } else {
-        console.error('❌ [Auth Success] Missing auth data');
-        console.error('❌ [Auth Success] Token present:', !!token);
-        console.error('❌ [Auth Success] User string present:', !!userString);
-        router.push('/login?error=missing_auth_data');
+        // Token not in URL - check if we already have it in localStorage (from previous attempt)
+        console.log('⚠️ [Auth Success] No token in URL, checking localStorage...');
+        const existingToken = localStorage.getItem('authToken');
+        const existingUser = localStorage.getItem('user');
+        
+        if (existingToken) {
+          console.log('✅ [Auth Success] Found existing token in localStorage, using it');
+          setMessage({
+            title: 'Logging in, please wait...',
+            subtitle: 'Almost there!'
+          });
+          
+          try {
+            let user = null;
+            if (existingUser) {
+              user = JSON.parse(existingUser);
+            }
+            
+            // Update auth context
+            if (setAuthData) {
+              setAuthData({ token: existingToken, user });
+            }
+            
+            // Small delay to ensure state is updated, then redirect
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Redirect to dashboard
+            const redirectPath = user?.role === 'ROLE_EMPLOYER' 
+              ? '/employer/dashboard' 
+              : '/candidate/dashboard';
+            console.log('🔵 [Auth Success] Redirecting to dashboard with existing token...');
+            router.replace(redirectPath);
+            return;
+          } catch (error) {
+            console.error('❌ [Auth Success] Error using existing token:', error);
+            router.replace('/login?error=missing_auth_data');
+          }
+        } else {
+          // No token found anywhere
+          console.error('❌ [Auth Success] Missing auth token in both URL and localStorage');
+          router.replace('/login?error=missing_auth_data');
+        }
       }
     };
   
@@ -71,8 +172,8 @@ const AuthSuccess = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-purple-50">
       <div className="text-center">
         <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-orange-600 mb-4"></div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Completing sign in...</h2>
-        <p className="text-gray-600">Please wait while we set up your account</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">{message.title}</h2>
+        <p className="text-gray-600">{message.subtitle}</p>
       </div>
     </div>
   );

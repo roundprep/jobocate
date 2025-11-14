@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import mobile from '@/assets/login/mobile.png';
 import Link from "next/link";
 import { toast } from 'react-toastify';
+import { API_URL } from '@/config/api';
 import 'react-toastify/dist/ReactToastify.css';
 
 export default function Signup() {
@@ -41,7 +42,7 @@ export default function Signup() {
 
   const verifyEmail = async (email, token) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-email`, {
+      const response = await fetch(`${API_URL}/api/auth/verify-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -76,7 +77,7 @@ export default function Signup() {
       setIsLoading(true);
       
       // First, register the user
-      const registerResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
+      const registerResponse = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

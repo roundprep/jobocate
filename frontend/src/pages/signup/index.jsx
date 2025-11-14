@@ -49,22 +49,27 @@ const Signup = () => {
         password: formData.password,
         role: formData.role
       });
-      router.push('/candidate/dashboard');
+      // Redirect based on user role
+      const userRole = JSON.parse(localStorage.getItem('user') || '{}')?.role;
+      const redirectPath = userRole === 'ROLE_EMPLOYER' 
+        ? '/employer/dashboard' 
+        : '/candidate/dashboard';
+      router.push(redirectPath);
     } catch (err) {
-      setError(err.response?.data?.message || 'Signup failed. Please try again.');
+      setError(err.message || 'Signup failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSignup = () => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-    window.location.href = `${backendUrl}/api/auth/google`;
+    const { API_URL } = require('@/config/api');
+    window.location.href = `${API_URL}/api/auth/google`;
   };
 
   const handleLinkedInSignup = () => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-    window.location.href = `${backendUrl}/api/auth/linkedin`;
+    const { API_URL } = require('@/config/api');
+    window.location.href = `${API_URL}/api/auth/linkedin`;
   };
 
   return (

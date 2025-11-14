@@ -21,7 +21,8 @@ export default function ProfilePage() {
           return;
         }
 
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/profile`, {
+        const { API_URL } = await import('@/config/api');
+        const response = await fetch(`${API_URL}/api/users/profile`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }

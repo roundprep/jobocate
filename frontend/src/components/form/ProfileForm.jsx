@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from 'react-toastify';
+import { API_URL } from '@/config/api';
 import 'react-toastify/dist/ReactToastify.css';
 import Image from "next/image";
 
@@ -91,7 +92,7 @@ export default function ProfileForm({ initialData = null }) {
       }
       
       // Then update the profile with the new data
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/profile`, {
+      const response = await fetch(`${API_URL}/api/users/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -111,6 +112,12 @@ export default function ProfileForm({ initialData = null }) {
       }
 
       toast.success('Profile updated successfully!');
+      
+      // Trigger profile update event to refresh user data in context
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('profileUpdated'));
+      }
+      
       router.refresh(); // Refresh the page to show updated data
       
     } catch (err) {

@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useAuth } from '@/context/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import logo from '@/assets/advocate_logo.png';
 import {
   HomeIcon,
   BriefcaseIcon,
@@ -18,9 +21,12 @@ import {
 
 function CandidateLayoutContent({ children }) {
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef(null);
+  
+  const dashboardHome = '/candidate/dashboard';
 
   // Navigation items
   const navigation = [
@@ -44,9 +50,7 @@ function CandidateLayoutContent({ children }) {
   }, []);
 
   const handleSignOut = () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('user');
-    router.push('/login');
+    logout();
   };
 
   return (
@@ -60,7 +64,17 @@ function CandidateLayoutContent({ children }) {
           >
             <Bars3Icon className="h-6 w-6" />
           </button>
-          <h1 className="text-xl font-bold text-orange-600">Candidate Dashboard</h1>
+          <Link href={dashboardHome} className="flex items-center">
+            <div className="relative w-24 h-8">
+              <Image 
+                src={logo} 
+                alt="Jobocate Logo" 
+                fill
+                className="object-contain object-center"
+                priority
+              />
+            </div>
+          </Link>
           <div className="w-6"></div> {/* For alignment */}
         </div>
       </div>
@@ -74,7 +88,17 @@ function CandidateLayoutContent({ children }) {
         >
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-orange-600">Jobocate</h2>
+              <Link href={dashboardHome} className="flex items-center">
+                <div className="relative w-28 h-10">
+                  <Image 
+                    src={logo} 
+                    alt="Jobocate Logo" 
+                    fill
+                    className="object-contain object-left"
+                    priority
+                  />
+                </div>
+              </Link>
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="lg:hidden text-gray-500 hover:text-gray-600"
@@ -104,12 +128,26 @@ function CandidateLayoutContent({ children }) {
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
                   className="flex items-center w-full text-left rounded-md hover:bg-gray-50 p-2"
                 >
-                  <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
-                    <UserIcon className="h-5 w-5" />
-                  </div>
+                  {user?.picture ? (
+                    <img
+                      src={user.picture}
+                      alt={user.name || 'User'}
+                      className="h-8 w-8 rounded-full"
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+                      {user?.name ? (
+                        <span className="text-xs font-medium">
+                          {user.name.charAt(0).toUpperCase()}
+                        </span>
+                      ) : (
+                        <UserIcon className="h-5 w-5" />
+                      )}
+                    </div>
+                  )}
                   <div className="ml-3">
                     <p className="text-sm font-medium text-gray-700">
-                      {typeof window !== 'undefined' && JSON.parse(localStorage.getItem('user') || '{}').name || 'User'}
+                      {user?.name || 'User'}
                     </p>
                     <p className="text-xs text-gray-500">View profile</p>
                   </div>
@@ -153,11 +191,25 @@ function CandidateLayoutContent({ children }) {
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
                     className="flex items-center space-x-3"
                   >
-                    <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
-                      <UserIcon className="h-5 w-5" />
-                    </div>
+                    {user?.picture ? (
+                      <img
+                        src={user.picture}
+                        alt={user.name || 'User'}
+                        className="h-8 w-8 rounded-full"
+                      />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+                        {user?.name ? (
+                          <span className="text-xs font-medium">
+                            {user.name.charAt(0).toUpperCase()}
+                          </span>
+                        ) : (
+                          <UserIcon className="h-5 w-5" />
+                        )}
+                      </div>
+                    )}
                     <span className="text-sm font-medium text-gray-700">
-                      {typeof window !== 'undefined' && JSON.parse(localStorage.getItem('user') || '{}').name || 'User'}
+                      {user?.name || 'User'}
                     </span>
                   </button>
                   {isProfileOpen && (
@@ -194,7 +246,7 @@ function CandidateLayoutContent({ children }) {
 
 export default function CandidateLayout({ children }) {
   return (
-    <ProtectedRoute allowedRoles={['ROLE_TALENT']}>
+    <ProtectedRoute allowedRoles={['ROLE_CANDIDATE']}>
       <CandidateLayoutContent>{children}</CandidateLayoutContent>
     </ProtectedRoute>
   );

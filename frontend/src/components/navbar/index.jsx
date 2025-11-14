@@ -30,7 +30,7 @@ export const Navbar = () => {
   };
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50 shadow-sm transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
@@ -52,25 +52,25 @@ export const Navbar = () => {
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="/about"
-              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
+              className="text-gray-700 dark:text-gray-300 font-semibold hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               About
             </Link>
             <Link
               href="/jobs"
-              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
+              className="text-gray-700 dark:text-gray-300 font-semibold hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               Jobs
             </Link>
             <Link
               href="/pricing"
-              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
+              className="text-gray-700 dark:text-gray-300 font-semibold hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               Pricing
             </Link>
             <Link
               href="/contact"
-              className="text-gray-700 font-semibold hover:text-orange-600 transition-colors"
+              className="text-gray-700 dark:text-gray-300 font-semibold hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >
               Contact
             </Link>
@@ -81,14 +81,14 @@ export const Navbar = () => {
             {user ? (
               <button
                 onClick={handleDashboardClick}
-                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold hover:shadow-lg transition-all"
+                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-600 dark:to-primary-700 text-white font-semibold hover:shadow-lg transition-all"
               >
                 Dashboard
               </button>
             ) : (
               <Link
                 href="/login"
-                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold hover:shadow-lg transition-all"
+                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-600 dark:to-primary-700 text-white font-semibold hover:shadow-lg transition-all"
               >
                 Log In / Sign Up
               </Link>
@@ -98,7 +98,7 @@ export const Navbar = () => {
           {/* Hamburger for mobile */}
           <div className="md:hidden flex items-center">
             <button
-              className="text-gray-700 hover:text-orange-600 focus:outline-none"
+              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 focus:outline-none"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label="Open mobile menu"
             >
@@ -111,11 +111,11 @@ export const Navbar = () => {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className="md:hidden mt-2 bg-white rounded-lg shadow-lg py-4 px-6 flex flex-col space-y-4 animate-slide-down">
-            <Link href="/about" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>About</Link>
-            <Link href="/jobs" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>Jobs</Link>
-            <Link href="/pricing" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>Pricing</Link>
-            <Link href="/contact" className="text-gray-700 font-medium hover:text-orange-600 transition-colors" onClick={() => setMobileOpen(false)}>Contact</Link>
+          <div className="md:hidden mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg py-4 px-6 flex flex-col space-y-4 animate-slide-down border border-gray-200 dark:border-gray-700">
+            <Link href="/about" className="text-gray-700 dark:text-gray-300 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors" onClick={() => setMobileOpen(false)}>About</Link>
+            <Link href="/jobs" className="text-gray-700 dark:text-gray-300 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors" onClick={() => setMobileOpen(false)}>Jobs</Link>
+            <Link href="/pricing" className="text-gray-700 dark:text-gray-300 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors" onClick={() => setMobileOpen(false)}>Pricing</Link>
+            <Link href="/contact" className="text-gray-700 dark:text-gray-300 font-medium hover:text-primary-600 dark:hover:text-primary-400 transition-colors" onClick={() => setMobileOpen(false)}>Contact</Link>
             {user ? (
               <>
                 <button 
@@ -124,7 +124,7 @@ export const Navbar = () => {
                     handleDashboardClick(e);
                     setMobileOpen(false);
                   }}
-                  className="w-full px-4 py-3 text-center rounded-lg bg-gray-100 text-gray-800 font-medium hover:bg-gray-200 transition-colors"
+                  className="w-full px-4 py-3 text-center rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 >
                   Dashboard
                 </button>
@@ -133,7 +133,7 @@ export const Navbar = () => {
                     handleLogout();
                     setMobileOpen(false);
                   }}
-                  className="w-full px-4 py-2 text-center rounded-lg text-red-600 font-semibold hover:bg-red-50 transition"
+                  className="w-full px-4 py-2 text-center rounded-lg text-red-600 dark:text-red-400 font-semibold hover:bg-red-50 dark:hover:bg-red-900/20 transition"
                 >
                   Logout
                 </button>
@@ -141,7 +141,7 @@ export const Navbar = () => {
             ) : (
               <Link 
                 href="/login" 
-                className="px-4 py-2.5 rounded-lg bg-gray-100 text-gray-800 font-medium text-center hover:bg-gray-200 transition-colors" 
+                className="px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-medium text-center hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors" 
                 onClick={() => setMobileOpen(false)}
               >
                 Log In / Sign Up
