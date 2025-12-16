@@ -34,12 +34,7 @@ import {
   SidebarLabel,
   SidebarDivider,
 } from '@/components/catalyst/sidebar';
-import {
-  Navbar,
-  NavbarSection,
-  NavbarItem,
-  NavbarSpacer,
-} from '@/components/catalyst/navbar';
+
 import {
   Dropdown,
   DropdownButton,
@@ -48,8 +43,8 @@ import {
   DropdownDivider,
 } from '@/components/catalyst/dropdown';
 import { Avatar, AvatarButton } from '@/components/catalyst/avatar';
-import { Button } from '@/components/catalyst/button';
 import { Badge } from '@/components/catalyst/badge';
+import ThemeSwitcher from '@/components/theme/ThemeSwitcher';
 
 export default function DashboardLayout({ children }) {
   const router = useRouter();
@@ -72,8 +67,8 @@ export default function DashboardLayout({ children }) {
   };
 
   // Determine dashboard home based on user role
-  const dashboardHome = user?.role === 'ROLE_EMPLOYER' 
-    ? '/employer/dashboard' 
+  const dashboardHome = user?.role === 'ROLE_EMPLOYER'
+    ? '/employer/dashboard'
     : '/candidate/dashboard';
 
   const handleSignOut = async () => {
@@ -119,101 +114,137 @@ export default function DashboardLayout({ children }) {
   return (
     <>
       <SidebarLayout
-        navbar={
-          <Navbar>
-            <NavbarSpacer />
-          </Navbar>
-        }
+        isCollapsed={isCollapsed}
         sidebar={
-          <Sidebar className={isCollapsed ? 'w-16' : 'w-64'}>
-            <SidebarHeader className={isCollapsed ? 'p-2' : ''}>
-              <div className={`flex items-center ${isCollapsed ? 'justify-center relative' : 'justify-between'}`}>
-                {isCollapsed ? (
-                  <>
-                    <div className="flex items-center justify-center w-full">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-zinc-600 text-white font-bold text-lg">
-                        JO
-                      </div>
+          <Sidebar className="h-full w-full transition-all duration-300 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 shadow-sm">
+            {/* Header with logo and theme switcher */}
+            <SidebarHeader className={`${isCollapsed ? 'p-3' : 'p-5'} border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900`}>
+              {isCollapsed ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative group">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-white font-bold text-lg shadow-lg shadow-primary-500/20 transition-transform group-hover:scale-105">
+                      JO
                     </div>
                     <button
                       onClick={toggleSidebar}
-                      className="absolute top-2 right-2 p-1 rounded-lg hover:bg-zinc-200 transition-colors"
+                      className="absolute -right-1 -top-1 p-1.5 rounded-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-md hover:shadow-lg hover:scale-110 transition-all"
                       aria-label="Expand sidebar"
                     >
-                      <ChevronRightIcon className="h-4 w-4 text-zinc-700" />
+                      <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-700 dark:text-zinc-300" />
                     </button>
-                  </>
-                ) : (
-                  <>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <div className="relative w-32 h-10">
-                      <Image 
-                        src={logo} 
-                        alt="Jobocate Logo" 
+                      <Image
+                        src={logo}
+                        alt="Jobocate Logo"
                         fill
                         className="object-contain object-left"
                         priority
                       />
                     </div>
-                    <button
-                      onClick={toggleSidebar}
-                      className="p-1.5 rounded-lg hover:bg-zinc-200 transition-colors"
-                      aria-label="Collapse sidebar"
-                    >
-                      <ChevronLeftIcon className="h-5 w-5 text-zinc-700" />
-                    </button>
-                  </>
-                )}
-              </div>
-            </SidebarHeader>
-            <SidebarBody className={isCollapsed ? 'p-2' : ''}>
-              <SidebarSection>
-                {navigation.map((item) => (
-                  <SidebarItem 
-                    key={item.name} 
-                    href={item.href} 
-                    current={item.current}
-                    title={isCollapsed ? item.name : undefined}
-                    className={isCollapsed ? 'justify-center' : ''}
+                    <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-700" />
+                    <ThemeSwitcher />
+                  </div>
+                  <button
+                    onClick={toggleSidebar}
+                    className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors group"
+                    aria-label="Collapse sidebar"
                   >
-                    <item.icon data-slot="icon" />
-                    {!isCollapsed && (
-                      <SidebarLabel className="flex items-center gap-2">
-                        <span>{item.name}</span>
-                        {item.isPro && (
-                          <Badge color="amber" className="text-xs">Pro</Badge>
-                        )}
-                      </SidebarLabel>
-                    )}
-                  </SidebarItem>
-                ))}
+                    <ChevronLeftIcon className="h-5 w-5 text-zinc-600 dark:text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-200 transition-colors" />
+                  </button>
+                </div>
+              )}
+            </SidebarHeader>
+
+            {/* Navigation items */}
+            <SidebarBody className={`${isCollapsed ? 'p-2' : 'p-3'} flex-1 overflow-y-auto`}>
+              <SidebarSection>
+                {navigation.map((item, index) => {
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.name} className="relative group">
+                      <SidebarItem
+                        href={item.href}
+                        current={item.current}
+                        title={isCollapsed ? item.name : undefined}
+                        className={`${isCollapsed ? 'justify-center px-2' : ''} relative transition-all duration-200 ${
+                          item.current 
+                            ? 'bg-primary-50 dark:bg-primary-950/30 text-primary-700 dark:text-primary-300' 
+                            : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        }`}
+                      >
+                        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
+                          <div className={`relative ${item.current ? 'text-primary-600 dark:text-primary-400' : 'text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-700 dark:group-hover:text-zinc-300'} transition-colors`}>
+                            <Icon className="h-5 w-5" data-slot="icon" />
+                            {item.current && (
+                              <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-6 rounded-full bg-primary-500 dark:bg-primary-400" />
+                            )}
+                          </div>
+                          {!isCollapsed && (
+                            <SidebarLabel className="flex items-center gap-2 flex-1">
+                              <span className="font-medium">{item.name}</span>
+                              {item.isPro && (
+                                <Badge color="amber" className="text-[10px] px-1.5 py-0.5 font-semibold">
+                                  Pro
+                                </Badge>
+                              )}
+                            </SidebarLabel>
+                          )}
+                        </div>
+                      </SidebarItem>
+                    </div>
+                  );
+                })}
               </SidebarSection>
             </SidebarBody>
-            <SidebarFooter className={isCollapsed ? 'p-2' : ''}>
+
+            {/* Footer with notifications and user menu */}
+            <SidebarFooter className={`${isCollapsed ? 'p-2' : 'p-3'} border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900`}>
               <SidebarSection>
-                <SidebarItem 
+                <SidebarItem
                   title={isCollapsed ? 'Notifications' : undefined}
-                  className={isCollapsed ? 'justify-center' : ''}
+                  className={`${isCollapsed ? 'justify-center px-2' : ''} text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors`}
                 >
-                  <BellIcon data-slot="icon" />
+                  <div className="relative">
+                    <BellIcon className="h-5 w-5 text-zinc-500 dark:text-zinc-400" data-slot="icon" />
+                    <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-primary-500 border-2 border-white dark:border-zinc-900" />
+                  </div>
                   {!isCollapsed && <SidebarLabel>Notifications</SidebarLabel>}
                 </SidebarItem>
-                <SidebarDivider />
+                
+                <SidebarDivider className="my-3" />
+                
                 <Dropdown>
-                  <DropdownButton 
+                  <DropdownButton
                     as={SidebarItem}
-                    className={isCollapsed ? 'justify-center' : ''}
+                    className={`${isCollapsed ? 'justify-center px-2' : ''} text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors`}
                     title={isCollapsed ? user?.name || 'User' : undefined}
                   >
-                    <Avatar 
-                      src={user?.picture || null} 
-                      initials={getUserInitials()} 
-                      alt={user?.name || 'User'} 
-                      className="size-6"
-                      data-slot="avatar"
-                    />
-                    {!isCollapsed && <SidebarLabel>{user?.name || 'User'}</SidebarLabel>}
+                    <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
+                      <Avatar
+                        src={user?.picture || null}
+                        initials={getUserInitials()}
+                        alt={user?.name || 'User'}
+                        className="size-8 border-2 border-zinc-200 dark:border-zinc-700"
+                        data-slot="avatar"
+                      />
+                      {!isCollapsed && (
+                        <div className="flex flex-col items-start flex-1 min-w-0">
+                          <SidebarLabel className="font-semibold text-zinc-900 dark:text-white truncate w-full">
+                            {user?.name || 'User'}
+                          </SidebarLabel>
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate w-full">
+                            {user?.email || 'user@example.com'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </DropdownButton>
-                  <DropdownMenu anchor="top end" className="z-[100]">
+                  <DropdownMenu anchor="top end" className="z-[100] min-w-[200px]">
                     <DropdownItem href={user?.role === 'ROLE_EMPLOYER' ? '/employer/profile' : '/candidate/profile'}>
                       <UserCircleIcon data-slot="icon" />
                       <span>Profile</span>
@@ -227,7 +258,7 @@ export default function DashboardLayout({ children }) {
                       <span>Manage Subscription</span>
                     </DropdownItem>
                     <DropdownDivider />
-                    <DropdownItem onClick={handleSignOut}>
+                    <DropdownItem onClick={handleSignOut} className="text-red-600 dark:text-red-400">
                       <ArrowRightOnRectangleIcon data-slot="icon" />
                       <span>Sign out</span>
                     </DropdownItem>
@@ -237,7 +268,6 @@ export default function DashboardLayout({ children }) {
             </SidebarFooter>
           </Sidebar>
         }
-        isCollapsed={isCollapsed}
       >
         {children}
       </SidebarLayout>

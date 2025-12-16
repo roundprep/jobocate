@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Resume, ResumeDocument } from '../schemas/resume.schema';
@@ -10,6 +10,11 @@ import { CreateResumeDto, RegenerateSectionDto } from './dto/create-resume.dto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { ResumeVersion, ResumeVersionDocument } from '../schemas/resume-version.schema';
+import { ShareLink, ShareLinkDocument } from '../schemas/share-link.schema';
+import { UpdateResumeDto, CreateShareLinkDto } from './dto/resume-operations.dto';
+import { v4 as uuidv4 } from 'uuid';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class ResumeBuilderService {
@@ -21,6 +26,10 @@ export class ResumeBuilderService {
     private resumeModel: Model<ResumeDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    @InjectModel(ResumeVersion.name)
+    private resumeVersionModel: Model<ResumeVersionDocument>,
+    @InjectModel(ShareLink.name)
+    private shareLinkModel: Model<ShareLinkDocument>,
     private aiProviderService: AiProviderService,
     private resumeParserService: ResumeParserService,
   ) {
@@ -118,9 +127,109 @@ export class ResumeBuilderService {
 
   async update(id: string, userId: string, updates: Partial<Resume>): Promise<ResumeDocument> {
     const resume = await this.findOne(id, userId);
-    
+
+    // Prevent direct version manipulation via generic update
+    delete updates.version;
+
     Object.assign(resume, updates);
     return resume.save();
+  }
+
+  async autosave(id: string, userId: string, updateDto: UpdateResumeDto): Promise<ResumeDocument> {
+    const resume = await this.findOne(id, userId);
+
+    // Optimistic Concurrency Control
+    if (updateDto.version !== undefined && resume.version !== updateDto.version) {
+      throw new ConflictException('Resume has been modified by another process. Please refresh.');
+    }
+
+    if (updateDto.name) {
+      resume.name = updateDto.name;
+    }
+
+    if (updateDto.content) {
+      // Update each field present in content
+      Object.assign(resume, updateDto.content);
+    }
+
+    // Increment version
+    resume.version = (resume.version || 0) + 1;
+
+    return resume.save();
+  }
+
+  async createVersion(id: string, userId: string, description?: string): Promise<ResumeVersionDocument> {
+    const resume = await this.findOne(id, userId);
+
+    const version = new this.resumeVersionModel({
+      resumeId: resume._id,
+      version: resume.version,
+      content: resume.toObject(),
+      description: description || `Version ${resume.version}`,
+    });
+
+    return version.save();
+  }
+
+  async getVersions(id: string, userId: string): Promise<ResumeVersionDocument[]> {
+    await this.findOne(id, userId); // Ensure access rights
+    return this.resumeVersionModel.find({ resumeId: id }).sort({ version: -1 }).exec();
+  }
+
+  async createShareLink(id: string, userId: string, dto: CreateShareLinkDto): Promise<ShareLinkDocument> {
+    await this.findOne(id, userId); // Ensure access rights
+
+    let shareLink = await this.shareLinkModel.findOne({ resumeId: id }).exec();
+
+    if (!shareLink) {
+      shareLink = new this.shareLinkModel({
+        resumeId: id,
+        slug: uuidv4(), // Generate unique slug
+      });
+    }
+
+    shareLink.isActive = true;
+    shareLink.isPublic = dto.isPublic !== undefined ? dto.isPublic : shareLink.isPublic; // Default true in schema, but respect update
+
+    if (dto.password) {
+      shareLink.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+
+    if (dto.expiresInDays) {
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + dto.expiresInDays);
+      shareLink.expiresAt = expirationDate;
+    }
+
+    return shareLink.save();
+  }
+
+  async getSharedResume(slug: string, password?: string): Promise<ResumeDocument> {
+    const shareLink = await this.shareLinkModel.findOne({ slug, isActive: true }).exec();
+
+    if (!shareLink) {
+      throw new NotFoundException('Resume not found or link expired');
+    }
+
+    if (shareLink.expiresAt && new Date() > shareLink.expiresAt) {
+      throw new NotFoundException('Share link expired');
+    }
+
+    if (shareLink.passwordHash) {
+      if (!password) {
+        throw new ForbiddenException('Password required');
+      }
+      const isMatch = await bcrypt.compare(password, shareLink.passwordHash);
+      if (!isMatch) {
+        throw new ForbiddenException('Invalid password');
+      }
+    }
+
+    // Increment views
+    shareLink.views += 1;
+    await shareLink.save();
+
+    return this.resumeModel.findById(shareLink.resumeId).exec();
   }
 
   async regenerateSection(
@@ -247,266 +356,59 @@ Provide enhanced education entries with:
 
   async generatePDF(resume: ResumeDocument): Promise<string> {
     try {
-      const pdfDoc = await PDFDocument.create();
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      // Launch puppeteer
+      // In production/docker, might need args like --no-sandbox
+      const browser = await require('puppeteer').launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        headless: 'new'
+      });
+      const page = await browser.newPage();
 
-      const margin = 72;
-      const pageWidth = 612;
-      const pageHeight = 792;
-      let currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-      let yPosition = pageHeight - margin;
+      // Configure viewport for A4 at higher resolution for better quality
+      // A4 at 96dpi = 794x1123, but we'll use 2x for sharper rendering
+      await page.setViewport({ 
+        width: 1588,  // 794 * 2
+        height: 2246, // 1123 * 2
+        deviceScaleFactor: 1
+      });
 
-      // Header with name
-      if (resume.fullName) {
-        currentPage.drawText(resume.fullName, {
-          x: margin,
-          y: yPosition,
-          size: 18,
-          font: boldFont,
-          color: rgb(0, 0, 0),
-        });
-        yPosition -= 25;
-      }
+      // Navigate to the new preview route
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      
+      // Use the new preview page that renders ModernResumePreview
+      await page.goto(`${frontendUrl}/resume/preview/${resume._id}`, {
+        waitUntil: 'networkidle0',
+        timeout: 30000,
+      });
 
-      // Contact info
-      const contactInfo = [
-        resume.email,
-        resume.phone,
-        resume.location,
-        resume.website,
-        resume.linkedin,
-      ].filter(Boolean).join(' | ');
+      // Wait for resume to be fully loaded (signal from frontend)
+      await page.waitForFunction(() => window.resumeReady === true, { timeout: 10000 });
 
-      if (contactInfo) {
-        currentPage.drawText(contactInfo, {
-          x: margin,
-          y: yPosition,
-          size: 10,
-          font: font,
-          color: rgb(0.3, 0.3, 0.3),
-        });
-        yPosition -= 30;
-      }
+      // Additional wait to ensure all fonts and styles are loaded
+      await page.waitForTimeout(1000);
 
-      // Summary
-      if (resume.summary) {
-        currentPage.drawText('PROFESSIONAL SUMMARY', {
-          x: margin,
-          y: yPosition,
-          size: 12,
-          font: boldFont,
-          color: rgb(0, 0, 0),
-        });
-        yPosition -= 20;
+      // Generate PDF with exact A4 dimensions
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        displayHeaderFooter: false,
+        margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
+        scale: 0.5, // Scale down the 2x viewport to normal size for crisp rendering
+      });
 
-        const summaryLines = this.splitTextIntoLines(resume.summary, 70);
-        for (const line of summaryLines) {
-          if (yPosition < margin + 50) {
-            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-            yPosition = pageHeight - margin;
-          }
-          currentPage.drawText(line, {
-            x: margin,
-            y: yPosition,
-            size: 10,
-            font: font,
-            color: rgb(0, 0, 0),
-          });
-          yPosition -= 14;
-        }
-        yPosition -= 10;
-      }
-
-      // Skills
-      if (resume.skills && resume.skills.length > 0) {
-        if (yPosition < margin + 50) {
-          currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-          yPosition = pageHeight - margin;
-        }
-
-        currentPage.drawText('SKILLS', {
-          x: margin,
-          y: yPosition,
-          size: 12,
-          font: boldFont,
-          color: rgb(0, 0, 0),
-        });
-        yPosition -= 20;
-
-        const skillsText = resume.skills.join(' • ');
-        const skillsLines = this.splitTextIntoLines(skillsText, 70);
-        for (const line of skillsLines) {
-          if (yPosition < margin + 50) {
-            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-            yPosition = pageHeight - margin;
-          }
-          currentPage.drawText(line, {
-            x: margin,
-            y: yPosition,
-            size: 10,
-            font: font,
-            color: rgb(0, 0, 0),
-          });
-          yPosition -= 14;
-        }
-        yPosition -= 10;
-      }
-
-      // Experience
-      if (resume.experience && resume.experience.length > 0) {
-        if (yPosition < margin + 100) {
-          currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-          yPosition = pageHeight - margin;
-        }
-
-        currentPage.drawText('PROFESSIONAL EXPERIENCE', {
-          x: margin,
-          y: yPosition,
-          size: 12,
-          font: boldFont,
-          color: rgb(0, 0, 0),
-        });
-        yPosition -= 25;
-
-        for (const exp of resume.experience) {
-          if (yPosition < margin + 80) {
-            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-            yPosition = pageHeight - margin;
-          }
-
-          // Job title and company
-          const titleCompany = `${exp.title} | ${exp.company}`;
-          currentPage.drawText(titleCompany, {
-            x: margin,
-            y: yPosition,
-            size: 11,
-            font: boldFont,
-            color: rgb(0, 0, 0),
-          });
-          yPosition -= 16;
-
-          // Dates and location
-          const dateLocation = `${exp.startDate} - ${exp.current ? 'Present' : exp.endDate || ''}${exp.location ? ` | ${exp.location}` : ''}`;
-          currentPage.drawText(dateLocation, {
-            x: margin,
-            y: yPosition,
-            size: 9,
-            font: font,
-            color: rgb(0.4, 0.4, 0.4),
-          });
-          yPosition -= 16;
-
-          // Description
-          if (exp.description) {
-            const descLines = this.splitTextIntoLines(exp.description, 70);
-            for (const line of descLines) {
-              if (yPosition < margin + 50) {
-                currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-                yPosition = pageHeight - margin;
-              }
-              currentPage.drawText(`• ${line}`, {
-                x: margin + 10,
-                y: yPosition,
-                size: 10,
-                font: font,
-                color: rgb(0, 0, 0),
-              });
-              yPosition -= 14;
-            }
-          }
-
-          // Achievements
-          if (exp.achievements && exp.achievements.length > 0) {
-            for (const achievement of exp.achievements) {
-              if (yPosition < margin + 50) {
-                currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-                yPosition = pageHeight - margin;
-              }
-              currentPage.drawText(`• ${achievement}`, {
-                x: margin + 10,
-                y: yPosition,
-                size: 10,
-                font: font,
-                color: rgb(0, 0, 0),
-              });
-              yPosition -= 14;
-            }
-          }
-
-          yPosition -= 10;
-        }
-      }
-
-      // Education
-      if (resume.education && resume.education.length > 0) {
-        if (yPosition < margin + 100) {
-          currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-          yPosition = pageHeight - margin;
-        }
-
-        currentPage.drawText('EDUCATION', {
-          x: margin,
-          y: yPosition,
-          size: 12,
-          font: boldFont,
-          color: rgb(0, 0, 0),
-        });
-        yPosition -= 25;
-
-        for (const edu of resume.education) {
-          if (yPosition < margin + 50) {
-            currentPage = pdfDoc.addPage([pageWidth, pageHeight]);
-            yPosition = pageHeight - margin;
-          }
-
-          const eduText = `${edu.degree} | ${edu.institution}${edu.endDate ? ` | ${edu.endDate}` : ''}`;
-          currentPage.drawText(eduText, {
-            x: margin,
-            y: yPosition,
-            size: 10,
-            font: font,
-            color: rgb(0, 0, 0),
-          });
-          yPosition -= 20;
-        }
-      }
+      await browser.close();
 
       // Save PDF
-      const pdfBytes = await pdfDoc.save();
       const filename = `resume-${resume._id}-${Date.now()}.pdf`;
       const filepath = path.join(this.uploadsDir, filename);
 
-      await fs.writeFile(filepath, pdfBytes);
+      await fs.writeFile(filepath, pdfBuffer);
 
       return filepath;
     } catch (error) {
       this.logger.error('Error generating PDF:', error);
       throw new Error('Failed to generate PDF');
     }
-  }
-
-  private splitTextIntoLines(text: string, maxLength: number): string[] {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = '';
-
-    for (const word of words) {
-      if ((currentLine + word).length <= maxLength) {
-        currentLine += (currentLine ? ' ' : '') + word;
-      } else {
-        if (currentLine) {
-          lines.push(currentLine);
-        }
-        currentLine = word;
-      }
-    }
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    return lines;
   }
 
   async delete(id: string, userId: string): Promise<void> {

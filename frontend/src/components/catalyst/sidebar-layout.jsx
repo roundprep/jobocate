@@ -31,7 +31,7 @@ function MobileSidebar({ open, close, children }) {
         transition
         className="fixed inset-y-0 w-full max-w-80 p-2 transition duration-300 ease-in-out data-closed:-translate-x-full"
       >
-        <div className="flex h-full flex-col rounded-lg bg-zinc-50 shadow-xs ring-1 ring-zinc-950/5 dark:bg-zinc-900 dark:ring-white/10">
+        <div className="flex h-full flex-col rounded-lg bg-white dark:bg-zinc-900 shadow-xs ring-1 ring-zinc-950/5 dark:ring-white/10">
           <div className="-mb-3 px-4 pt-3">
             <Headless.CloseButton as={NavbarItem} aria-label="Close navigation">
               <CloseMenuIcon />
@@ -46,31 +46,49 @@ function MobileSidebar({ open, close, children }) {
 
 export function SidebarLayout({ navbar, sidebar, children, isCollapsed = false }) {
   let [showSidebar, setShowSidebar] = useState(false)
-  const sidebarWidth = isCollapsed ? 'w-16' : 'w-64'
+
 
   return (
-    <div className="relative isolate flex min-h-svh w-full bg-white max-lg:flex-col lg:bg-zinc-100 dark:bg-zinc-900 dark:lg:bg-zinc-950">
-      {/* Sidebar on desktop */}
-      <div className={`fixed inset-y-0 left-0 ${sidebarWidth} max-lg:hidden z-10 bg-zinc-50 transition-all duration-300`}>{sidebar}</div>
+    <div className="relative isolate flex h-svh overflow-hidden w-full bg-white dark:bg-zinc-900 max-lg:flex-col lg:bg-white dark:lg:bg-zinc-950">
+      {/* Sidebar on desktop - only visible on lg and above */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 hidden lg:block transition-all duration-300 ${isCollapsed ? 'lg:w-16' : 'lg:w-64'}`}
+      >
+        <div className="h-full overflow-y-auto">
+          {sidebar}
+        </div>
+      </aside>
 
-      {/* Sidebar on mobile */}
-      <MobileSidebar open={showSidebar} close={() => setShowSidebar(false)}>
-        {sidebar}
-      </MobileSidebar>
+      {/* Sidebar on mobile - only visible on mobile */}
+      <div className="lg:hidden">
+        <MobileSidebar open={showSidebar} close={() => setShowSidebar(false)}>
+          {sidebar}
+        </MobileSidebar>
+      </div>
 
-      {/* Mobile menu button */}
-      <header className="flex items-center px-4 lg:hidden border-b border-zinc-950/5 dark:border-white/10 bg-white dark:bg-zinc-900">
+      {/* Navbar on mobile */}
+      <header className="flex items-center justify-between px-4 lg:hidden">
         <div className="py-2.5">
           <NavbarItem onClick={() => setShowSidebar(true)} aria-label="Open navigation">
             <OpenMenuIcon />
           </NavbarItem>
         </div>
+        <div className="min-w-0 flex-1 flex justify-end">{navbar}</div>
+      </header>
+
+      {/* Navbar on desktop */}
+      <header
+        className={`hidden lg:flex items-center justify-end  py-2.5 transition-all duration-300 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 ${isCollapsed ? 'lg:ml-6' : 'lg:ml-52'}`}
+      >
+        {navbar}
       </header>
 
       {/* Content */}
-      <main className={`flex flex-1 flex-col pb-2 lg:min-w-0 lg:pt-2 lg:pr-2 transition-all duration-300 ${isCollapsed ? 'lg:pl-16' : 'lg:pl-64'}`}>
-        <div className="grow p-6 lg:rounded-lg lg:bg-white lg:p-10 lg:shadow-xs lg:ring-1 lg:ring-zinc-950/5 dark:lg:bg-zinc-900 dark:lg:ring-white/10">
-          <div className="mx-auto">{children}</div>
+      <main
+        className={`flex flex-1 flex-col pb-2 lg:min-w-0 lg:pt-2 lg:pr-2 transition-all duration-300 ${isCollapsed ? 'lg:ml-12' : 'lg:ml-8'}`}
+      >
+        <div className="grow min-h-0 overflow-y-auto bg-gray-50 dark:bg-zinc-900">
+          {children}
         </div>
       </main>
     </div>

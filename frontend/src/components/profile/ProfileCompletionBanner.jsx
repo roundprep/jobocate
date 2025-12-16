@@ -100,7 +100,7 @@ export default function ProfileCompletionBanner() {
             <div className="ml-4 flex items-center space-x-2">
               <button
                 onClick={handleCompleteProfile}
-                className="bg-primary-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+                className="bg-primary-600 dark:bg-primary-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-700 dark:hover:bg-primary-600"
               >
                 Complete Now
               </button>

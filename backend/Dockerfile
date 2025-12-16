@@ -3,12 +3,15 @@ FROM node:22-alpine
 # Set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json yarn.lock ./
-RUN yarn install 
+# Copy shared workspace packages that local file dependencies rely on
+COPY packages /packages
+
+# Install backend dependencies first for better layer caching
+COPY backend/package*.json backend/yarn.lock ./
+RUN yarn install --frozen-lockfile
 
 # Copy application files
-COPY . .
+COPY backend .
 
 # Create uploads directory
 RUN mkdir -p uploads/resumes

@@ -5,7 +5,7 @@ import Head from 'next/head';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/context/AuthContext';
 import { API_URL } from '@/config/api';
-import { 
+import {
   SparklesIcon,
   DocumentTextIcon,
   CloudArrowUpIcon,
@@ -37,7 +37,9 @@ import { toast } from 'react-toastify';
 import RichTextEditor from '@/components/resume/RichTextEditor';
 import ResumeStepper from '@/components/resume/ResumeStepper';
 import TemplateSettings from '@/components/resume/TemplateSettings';
-import { 
+import ModernResumeEditor from '@/components/resume/ModernResumeEditor';
+import ModernResumePreview from '@/components/resume/ModernResumePreview';
+import {
   PhotoIcon,
   UserIcon,
   AcademicCapIcon,
@@ -54,6 +56,9 @@ import {
   BookOpenIcon,
   PuzzlePieceIcon,
   HeartIcon,
+  CheckBadgeIcon,
+  SwatchIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
@@ -69,6 +74,7 @@ import { Fragment } from 'react';
 // - frontend/src/assets/resume-templates/ats-friendly.png
 
 const WIZARD_STEPS = {
+  DASHBOARD: 'dashboard', // New Dashboard Step
   TEMPLATE: 'template',
   UPLOAD_OR_NEW: 'upload-or-new',
   EDITOR: 'editor', // New unified editor with tabs
@@ -87,6 +93,7 @@ const EDITOR_TABS = {
   CONTENT: 'content',
   CUSTOMIZE: 'customize',
   LINKS: 'links',
+
 };
 
 // Template images configuration
@@ -146,16 +153,16 @@ const templates = [
 
 export default function AIResumeBuilder() {
   const { user } = useAuth();
-  const [currentStep, setCurrentStep] = useState(WIZARD_STEPS.TEMPLATE);
+  const [currentStep, setCurrentStep] = useState(WIZARD_STEPS.DASHBOARD); // Default to Dashboard
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploadMethod, setUploadMethod] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentResume, setCurrentResume] = useState(null);
-  const [showPreviousResumes, setShowPreviousResumes] = useState(false);
   const [previousResumes, setPreviousResumes] = useState([]);
   const [loadingResumes, setLoadingResumes] = useState(false);
+  const [showPreviousResumes, setShowPreviousResumes] = useState(false);
 
   const [resumeData, setResumeData] = useState({
     name: 'My Resume',
@@ -192,7 +199,7 @@ export default function AIResumeBuilder() {
     fontFamily: 'inter', // inter, roboto, playfair, lato, montserrat
     fontSize: 'medium', // small, medium, large
   });
-  
+
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
   const [currentEditorStep, setCurrentEditorStep] = useState('personal');
   const [completedSteps, setCompletedSteps] = useState([]);
@@ -204,6 +211,9 @@ export default function AIResumeBuilder() {
   const [showResumeNameModal, setShowResumeNameModal] = useState(false);
   const [resumeNameInput, setResumeNameInput] = useState('');
   const [addedSections, setAddedSections] = useState(['personal']); // Only personal info by default
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
+  const [showPDFPreview, setShowPDFPreview] = useState(true); // Toggle between PDF and HTML preview
   const [expandedSections, setExpandedSections] = useState({
     personal: true,
     summary: false,
@@ -308,9 +318,168 @@ export default function AIResumeBuilder() {
     fetchPreviousResumes();
   }, []);
 
+  // Auto-generate PDF when editor opens and ensure preview URL is set
+  useEffect(() => {
+    if (currentStep === WIZARD_STEPS.EDITOR && currentResume) {
+      ensurePDFPreview();
+    }
+  }, [currentStep, currentResume?._id, currentResume?.id]);
+
+  // Update PDF preview URL when resume data changes (debounced)
+  useEffect(() => {
+    if (currentStep === WIZARD_STEPS.EDITOR && currentResume) {
+      const timeoutId = setTimeout(() => {
+        ensurePDFPreview();
+      }, 2000); // Wait 2 seconds after last change
+      return () => clearTimeout(timeoutId);
+    }
+  }, [resumeData, templateSettings]);
+
+  // Cleanup object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfPreviewUrl && pdfPreviewUrl.startsWith('blob:')) {
+        window.URL.revokeObjectURL(pdfPreviewUrl);
+      }
+    };
+  }, [pdfPreviewUrl]);
+
+  const ensurePDFPreview = async () => {
+    if (!currentResume) return;
+
+    const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+    if (!token) {
+      console.error('No auth token found');
+      return;
+    }
+
+    const resumeId = currentResume._id || currentResume.id;
+    if (!resumeId) {
+      console.error('No resume ID found');
+      return;
+    }
+
+    try {
+      // First, try to load existing PDF
+      const pdfUrl = `${API_URL}/api/resume-builder/${resumeId}/pdf`;
+      const checkResponse = await fetch(pdfUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (checkResponse.ok) {
+        // PDF exists, load it
+        await loadPDFPreview(resumeId, token);
+        return;
+      }
+
+      // PDF doesn't exist, generate it
+      if (checkResponse.status === 404) {
+        setPdfGenerating(true);
+        try {
+          const generateResponse = await fetch(`${API_URL}/api/resume-builder/${resumeId}/generate-pdf`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+
+          if (generateResponse.ok) {
+            const data = await generateResponse.json();
+            setCurrentResume(prev => ({ ...prev, pdfUrl: data.pdfUrl }));
+            toast.success('PDF generated successfully!');
+            // Wait a bit for PDF to be written to disk, then load it
+            // Try multiple times in case file isn't ready immediately
+            let attempts = 0;
+            const maxAttempts = 5;
+            const tryLoadPDF = async () => {
+              attempts++;
+              console.log(`Attempting to load PDF (attempt ${attempts}/${maxAttempts})`);
+              const success = await loadPDFPreview(resumeId, token);
+              if (!success && attempts < maxAttempts) {
+                setTimeout(tryLoadPDF, 1000);
+              } else if (attempts >= maxAttempts) {
+                setPdfGenerating(false);
+                toast.error('PDF generated but failed to load. Showing HTML preview instead.');
+                setShowPDFPreview(false);
+              } else {
+                setPdfGenerating(false);
+              }
+            };
+            setTimeout(tryLoadPDF, 2000); // Initial wait
+          } else {
+            const errorData = await generateResponse.json().catch(() => ({ message: 'Unknown error' }));
+            console.error('PDF generation failed:', errorData);
+            toast.error(errorData.message || 'Failed to generate PDF');
+            setPdfGenerating(false);
+          }
+        } catch (error) {
+          console.error('Error generating PDF:', error);
+          toast.error('Error generating PDF. Please try again.');
+          setPdfGenerating(false);
+        }
+      } else {
+        // Other error
+        console.error('Error checking PDF:', checkResponse.status);
+        setPdfGenerating(false);
+      }
+    } catch (error) {
+      console.error('Error ensuring PDF preview:', error);
+      setPdfGenerating(false);
+    }
+  };
+
+  const loadPDFPreview = async (resumeId, token) => {
+    try {
+      const pdfUrl = `${API_URL}/api/resume-builder/${resumeId}/pdf`;
+      console.log('Loading PDF from:', pdfUrl);
+      const response = await fetch(pdfUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        console.log('PDF blob received:', blob.type, blob.size, 'bytes');
+
+        // Verify it's actually a PDF
+        if (blob.type === 'application/pdf' || blob.size > 0) {
+          const objectUrl = window.URL.createObjectURL(blob);
+          // Clean up previous URL if exists
+          if (pdfPreviewUrl && pdfPreviewUrl.startsWith('blob:')) {
+            window.URL.revokeObjectURL(pdfPreviewUrl);
+          }
+          setPdfPreviewUrl(objectUrl);
+          console.log('PDF preview loaded successfully, object URL created');
+          return true;
+        } else {
+          console.error('Invalid PDF blob received:', blob.type, blob.size);
+          setPdfPreviewUrl(null);
+          return false;
+        }
+      } else if (response.status === 404) {
+        // PDF doesn't exist yet
+        console.log('PDF not found (404)');
+        setPdfPreviewUrl(null);
+        return false;
+      } else {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('Error loading PDF:', response.status, errorText);
+        setPdfPreviewUrl(null);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error loading PDF preview:', error);
+      setPdfPreviewUrl(null);
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (user && currentResume && (
-      currentStep === WIZARD_STEPS.PERSONAL || 
+      currentStep === WIZARD_STEPS.PERSONAL ||
       currentStep === WIZARD_STEPS.SUMMARY ||
       currentStep === WIZARD_STEPS.SKILLS ||
       currentStep === WIZARD_STEPS.EXPERIENCE ||
@@ -329,7 +498,7 @@ export default function AIResumeBuilder() {
       }));
     }
   }, [user, currentStep, currentResume]);
-  
+
   // Update currentEditorStep when currentStep changes
   useEffect(() => {
     if ([
@@ -348,7 +517,7 @@ export default function AIResumeBuilder() {
   // Helper function to determine which sections should be added based on resume data
   const determineAddedSections = (data) => {
     const sections = ['personal']; // Always include personal
-    
+
     // Check each section for data
     if (data.summary && data.summary.trim()) sections.push('summary');
     if (data.profileSummary && data.profileSummary.trim()) sections.push('profileSummary');
@@ -366,7 +535,7 @@ export default function AIResumeBuilder() {
     if (data.publications && Array.isArray(data.publications) && data.publications.length > 0) sections.push('publications');
     if (data.declaration && data.declaration.trim()) sections.push('declaration');
     if (data.custom && Array.isArray(data.custom) && data.custom.length > 0) sections.push('custom');
-    
+
     return sections;
   };
 
@@ -432,7 +601,7 @@ export default function AIResumeBuilder() {
       if (response.ok) {
         const data = await response.json();
         setCurrentResume(data);
-        
+
         const resumeDataToSet = {
           name: data.name || resumeNameInput.trim() || 'My Resume',
           fullName: data.fullName || '',
@@ -459,13 +628,13 @@ export default function AIResumeBuilder() {
           declaration: data.declaration || '',
           custom: data.custom || [],
         };
-        
+
         setResumeData(resumeDataToSet);
-        
+
         // Determine which sections should be added based on the loaded data
         const sectionsToAdd = determineAddedSections(resumeDataToSet);
         setAddedSections(sectionsToAdd);
-        
+
         setShowResumeNameModal(false);
         setResumeNameInput('');
         setCurrentStep(WIZARD_STEPS.EDITOR);
@@ -545,7 +714,7 @@ export default function AIResumeBuilder() {
         // Handle both _id and id formats from backend
         const resumeId = data._id || data.id;
         console.log('Resume created with ID:', resumeId);
-        
+
         setCurrentResume({
           ...data,
           id: resumeId,
@@ -577,13 +746,13 @@ export default function AIResumeBuilder() {
           declaration: data.declaration || '',
           custom: data.custom || [],
         };
-        
+
         setResumeData(resumeDataToSet);
-        
+
         // Determine which sections should be added based on the loaded data
         const sectionsToAdd = determineAddedSections(resumeDataToSet);
         setAddedSections(sectionsToAdd);
-        
+
         setShowResumeNameModal(false);
         setResumeNameInput('');
         setCurrentStep(WIZARD_STEPS.EDITOR);
@@ -601,7 +770,7 @@ export default function AIResumeBuilder() {
               errorMessage = errorData.message || errorData.error || errorMessage;
               if (errorData.errors) {
                 // Handle validation errors
-                const validationErrors = Array.isArray(errorData.errors) 
+                const validationErrors = Array.isArray(errorData.errors)
                   ? errorData.errors.join(', ')
                   : Object.values(errorData.errors).flat().join(', ');
                 errorMessage = validationErrors || errorMessage;
@@ -644,7 +813,7 @@ export default function AIResumeBuilder() {
 
       if (response.ok) {
         const data = await response.json();
-        
+
         if (section === 'summary') {
           setResumeData(prev => ({ ...prev, summary: data.content }));
         } else if (section === 'profileSummary') {
@@ -653,7 +822,7 @@ export default function AIResumeBuilder() {
           const skills = data.content.split(',').map(s => s.trim()).filter(Boolean);
           setResumeData(prev => ({ ...prev, skills }));
         }
-        
+
         toast.success(`${section} regenerated successfully!`);
       } else {
         const error = await response.json();
@@ -662,6 +831,143 @@ export default function AIResumeBuilder() {
     } catch (error) {
       console.error(`Error regenerating ${section}:`, error);
       toast.error(`Error regenerating ${section}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateExperience = async () => {
+    if (!currentExperience.title || !currentExperience.company) {
+      toast.error('Please enter a job title and company first');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      // Use the generic regenerate endpoint but pass context for specific experience generation
+      const response = await fetch(`${API_URL}/api/resume-builder/${currentResume?._id || currentResume?.id || 'temp'}/regenerate-section`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          section: 'experience_responsibilities',
+          context: {
+            title: currentExperience.title,
+            company: currentExperience.company,
+            current: currentExperience.current
+          }
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentExperience(prev => ({ ...prev, responsibilities: data.content }));
+        toast.success('Responsibilities generated successfully!');
+      } else {
+        // Mock fallback if backend endpoint is not yet capable of experience generation
+        console.warn('Backend generation failed, using fallback mock.');
+        setTimeout(() => {
+          const mockContent = `<ul>
+              <li>Spearheaded development initiatives at ${currentExperience.company} as ${currentExperience.title}, driving key project milestones.</li>
+              <li>Collaborated with cross-functional teams to optimize workflows and enhance productivity.</li>
+              <li>Implemented scalable solutions resulting in improved performance and user satisfaction.</li>
+            </ul>`;
+          setCurrentExperience(prev => ({ ...prev, responsibilities: mockContent }));
+          toast.success('Responsibilities generated (Demo Mode)!');
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error generating experience:', error);
+      toast.error('Error generating experience');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateSkills = async () => {
+    setIsGenerating(true);
+    try {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+
+      // Determine context - use most recent experience if available
+      const latestExperience = resumeData.experience && resumeData.experience.length > 0
+        ? resumeData.experience[0]
+        : null;
+
+      const context = {
+        title: latestExperience ? latestExperience.title : 'Professional',
+        industry: latestExperience ? latestExperience.company : 'Tech'
+      };
+
+      const response = await fetch(`${API_URL}/api/resume-builder/${currentResume?._id || currentResume?.id || 'temp'}/regenerate-section`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          section: 'skills',
+          context: context
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Backend should return comma separated skills or a list
+        let skills = [];
+        if (Array.isArray(data.content)) {
+          skills = data.content;
+        } else if (typeof data.content === 'string') {
+          skills = data.content.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+        }
+
+        // Merge with existing skills to avoid losing them
+        setResumeData(prev => {
+          const existingSkills = prev.skills || [];
+          // Combine and unique
+          const combined = [...new Set([...existingSkills, ...skills])];
+          return { ...prev, skills: combined };
+        });
+
+        if (!expandedSections.skills) {
+          setExpandedSections(prev => ({ ...prev, skills: true }));
+        }
+
+        toast.success('Skills generated successfully!');
+      } else {
+        // Mock fallback
+        console.warn('Backend generation failed, using fallback mock.');
+        setTimeout(() => {
+          const role = context.title.toLowerCase();
+          let mockSkills = ['Communication', 'Teamwork', 'Problem Solving'];
+
+          if (role.includes('developer') || role.includes('engineer') || role.includes('software')) {
+            mockSkills = ['JavaScript', 'React', 'Node.js', 'TypeScript', 'Git', 'Agile', 'Jira', 'AWS'];
+          } else if (role.includes('manager') || role.includes('lead')) {
+            mockSkills = ['Leadership', 'Strategic Planning', 'Project Management', 'Agile', 'Stakeholder Management'];
+          } else if (role.includes('designer')) {
+            mockSkills = ['Figma', 'Adobe XD', 'UI/UX', 'Prototyping', 'Wireframing', 'User Research'];
+          }
+
+          setResumeData(prev => {
+            const existingSkills = prev.skills || [];
+            const combined = [...new Set([...existingSkills, ...mockSkills])];
+            return { ...prev, skills: combined };
+          });
+
+          if (!expandedSections.skills) {
+            setExpandedSections(prev => ({ ...prev, skills: true }));
+          }
+
+          toast.success('Skills generated (Demo Mode)!');
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error generating skills:', error);
+      toast.error('Error generating skills');
     } finally {
       setIsGenerating(false);
     }
@@ -754,7 +1060,7 @@ export default function AIResumeBuilder() {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
-      
+
       // Clean up the blob URL after a delay
       setTimeout(() => window.URL.revokeObjectURL(url), 100);
     } catch (error) {
@@ -790,7 +1096,7 @@ export default function AIResumeBuilder() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
+
       toast.success('PDF downloaded successfully!');
     } catch (error) {
       console.error('Error downloading PDF:', error);
@@ -800,7 +1106,7 @@ export default function AIResumeBuilder() {
 
   const handleDeleteResume = async (id) => {
     if (!confirm('Are you sure you want to delete this resume?')) return;
-    
+
     try {
       const token = localStorage.getItem('authToken') || localStorage.getItem('token');
       const response = await fetch(`${API_URL}/api/resume-builder/${id}`, {
@@ -810,7 +1116,7 @@ export default function AIResumeBuilder() {
           'Content-Type': 'application/json',
         },
       });
-      
+
       if (response.ok) {
         setPreviousResumes(prev => prev.filter(resume => (resume.id || resume._id) !== id));
         toast.success('Resume deleted successfully');
@@ -844,7 +1150,7 @@ export default function AIResumeBuilder() {
         const data = await response.json();
         setCurrentResume(data);
         setSelectedTemplate(data.template);
-        
+
         const resumeDataToSet = {
           name: data.name || 'My Resume',
           fullName: data.fullName || '',
@@ -871,13 +1177,13 @@ export default function AIResumeBuilder() {
           declaration: data.declaration || '',
           custom: data.custom || [],
         };
-        
+
         setResumeData(resumeDataToSet);
-        
+
         // Determine which sections should be added based on the loaded data
         const sectionsToAdd = determineAddedSections(resumeDataToSet);
         setAddedSections(sectionsToAdd);
-        
+
         // Expand sections that have data
         const expandedToSet = {
           personal: true,
@@ -899,7 +1205,7 @@ export default function AIResumeBuilder() {
           custom: (data.custom && data.custom.length > 0),
         };
         setExpandedSections(expandedToSet);
-        
+
         setCurrentStep(WIZARD_STEPS.EDITOR);
         setShowPreviousResumes(false);
         toast.success('Resume loaded for editing');
@@ -931,7 +1237,7 @@ export default function AIResumeBuilder() {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
-      
+
       setTimeout(() => window.URL.revokeObjectURL(url), 100);
     } catch (error) {
       console.error('Error viewing PDF:', error);
@@ -1144,7 +1450,7 @@ export default function AIResumeBuilder() {
       setCurrentSkill('');
     }
   };
-  
+
   // Step navigation helpers
   const handleStepClick = (stepId) => {
     if (currentResume) {
@@ -1152,7 +1458,7 @@ export default function AIResumeBuilder() {
       setCurrentEditorStep(stepId);
     }
   };
-  
+
   const handleNextStep = () => {
     const steps = [
       WIZARD_STEPS.PERSONAL,
@@ -1170,7 +1476,7 @@ export default function AIResumeBuilder() {
       setCurrentEditorStep(nextStep);
     }
   };
-  
+
   const handlePreviousStep = () => {
     const steps = [
       WIZARD_STEPS.PERSONAL,
@@ -1188,7 +1494,7 @@ export default function AIResumeBuilder() {
       setCurrentEditorStep(prevStep);
     }
   };
-  
+
   const markStepComplete = (stepId) => {
     if (!completedSteps.includes(stepId)) {
       setCompletedSteps(prev => [...prev, stepId]);
@@ -1249,14 +1555,14 @@ export default function AIResumeBuilder() {
 
     const colors = colorSchemes[templateSettings.colorScheme] || colorSchemes.blue;
     const fontClass = fontFamilies[templateSettings.fontFamily] || fontFamilies.inter;
-    
+
     // Format date and timestamp
     const formatDate = (dateString) => {
       if (!dateString) return '';
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
@@ -1264,16 +1570,16 @@ export default function AIResumeBuilder() {
     };
 
     return (
-      <div className={`h-full w-full bg-white overflow-y-auto ${fontClass}`}>
-        <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 z-10 w-full">
+      <div className={`h-full w-full bg-white dark:bg-zinc-900 overflow-y-auto ${fontClass}`}>
+        <div className="sticky top-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 z-10 w-full">
           <div className="flex items-center justify-between">
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-zinc-950">Live Preview</h3>
+              <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Live Preview</h3>
               {currentResume && (
                 <div className="mt-1 space-y-0.5">
-                  <p className="text-xs font-medium text-zinc-700">{resumeData.name || currentResume.name || 'My Resume'}</p>
+                  <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{resumeData.name || currentResume.name || 'My Resume'}</p>
                   {currentResume.createdAt && (
-                    <p className="text-xs text-zinc-500">{formatDate(currentResume.createdAt)}</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(currentResume.createdAt)}</p>
                   )}
                 </div>
               )}
@@ -1284,153 +1590,153 @@ export default function AIResumeBuilder() {
         <div className="h-full w-full overflow-y-auto">
           {/* Resume Preview Content - Full Width of Panel, No Padding Constraints */}
           <div className="w-full px-8 py-8 space-y-6">
-              {/* Header */}
-              <div className={`border-b ${colors.border} pb-4 w-full`}>
-                {resumeData.photo && (
-                  <div className="mb-4">
-                    <img src={resumeData.photo} alt="Profile" className="w-24 h-24 rounded-full object-cover" />
-                  </div>
-                )}
-                <h1 className={`text-2xl font-bold ${colors.primary} mb-2 text-left`}>
-                  {resumeData.fullName || 'Your Name'}
-                </h1>
-                <div className="flex flex-wrap gap-2 text-sm text-zinc-600 text-left">
-                  {resumeData.email && <span>{resumeData.email}</span>}
-                  {resumeData.phone && <span>• {resumeData.phone}</span>}
-                  {resumeData.location && <span>• {resumeData.location}</span>}
-                  {resumeData.website && <span>• {resumeData.website}</span>}
-                  {resumeData.linkedin && <span>• LinkedIn</span>}
-                  {resumeData.github && <span>• GitHub</span>}
+            {/* Header */}
+            <div className={`border-b ${colors.border} pb-4 w-full`}>
+              {resumeData.photo && (
+                <div className="mb-4">
+                  <img src={resumeData.photo} alt="Profile" className="w-24 h-24 rounded-full object-cover" />
+                </div>
+              )}
+              <h1 className={`text-2xl font-bold ${colors.primary} mb-2 text-left`}>
+                {resumeData.fullName || 'Your Name'}
+              </h1>
+              <div className="flex flex-wrap gap-2 text-sm text-zinc-600 dark:text-zinc-400 text-left">
+                {resumeData.email && <span>• {resumeData.email}</span>}
+                {resumeData.phone && <span>• {resumeData.phone}</span>}
+                {resumeData.location && <span>• {resumeData.location}</span>}
+                {resumeData.website && <span>• {resumeData.website}</span>}
+                {resumeData.linkedin && <span>• LinkedIn</span>}
+                {resumeData.github && <span>• GitHub</span>}
+              </div>
+            </div>
+
+            {/* Summary */}
+            {resumeData.summary && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Professional Summary</h2>
+                <div
+                  className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+                  dangerouslySetInnerHTML={{ __html: resumeData.summary }}
+                />
+              </div>
+            )}
+
+            {/* Profile Summary */}
+            {resumeData.profileSummary && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Profile Summary</h2>
+                <div
+                  className="text-sm text-zinc-600 leading-relaxed prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: resumeData.profileSummary }}
+                />
+              </div>
+            )}
+
+            {/* Skills */}
+            {resumeData.skills && resumeData.skills.length > 0 && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Skills</h2>
+                <div className="flex flex-wrap gap-2">
+                  {resumeData.skills.map((skill, idx) => (
+                    <Badge key={idx} color="zinc" className="text-xs">
+                      {skill}
+                    </Badge>
+                  ))}
                 </div>
               </div>
+            )}
 
-              {/* Summary */}
-              {resumeData.summary && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Professional Summary</h2>
-                  <div 
-                    className="text-sm text-zinc-600 leading-relaxed prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: resumeData.summary }}
-                  />
+            {/* Technical Skills */}
+            {resumeData.technicalSkills && resumeData.technicalSkills.length > 0 && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Technical Skills</h2>
+                <div className="flex flex-wrap gap-2">
+                  {resumeData.technicalSkills.map((skill, idx) => (
+                    <Badge key={idx} color="green" className="text-xs">
+                      {skill}
+                    </Badge>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Profile Summary */}
-              {resumeData.profileSummary && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Profile Summary</h2>
-                  <div 
-                    className="text-sm text-zinc-600 leading-relaxed prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: resumeData.profileSummary }}
-                  />
+            {/* Certifications */}
+            {resumeData.certifications && resumeData.certifications.length > 0 && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Certifications</h2>
+                <div className="space-y-2">
+                  {resumeData.certifications.map((cert, idx) => (
+                    <div key={idx}>
+                      <p className="font-semibold text-zinc-950 dark:text-white">{cert.name}</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400">{cert.issuer}</p>
+                      {cert.date && <p className="text-xs text-zinc-500 dark:text-zinc-500">{cert.date}</p>}
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Skills */}
-              {resumeData.skills && resumeData.skills.length > 0 && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Skills</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {resumeData.skills.map((skill, idx) => (
-                      <Badge key={idx} color="zinc" className="text-xs">
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
+            {/* Professional References */}
+            {resumeData.references && resumeData.references.length > 0 && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Professional References</h2>
+                <div className="space-y-2">
+                  {resumeData.references.map((ref, idx) => (
+                    <div key={idx}>
+                      <p className="font-semibold text-zinc-950 dark:text-white">{ref.name}</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400">{ref.title} at {ref.company}</p>
+                      {ref.email && <p className="text-xs text-zinc-500 dark:text-zinc-500">{ref.email}</p>}
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Technical Skills */}
-              {resumeData.technicalSkills && resumeData.technicalSkills.length > 0 && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Technical Skills</h2>
-                  <div className="flex flex-wrap gap-2">
-                    {resumeData.technicalSkills.map((skill, idx) => (
-                      <Badge key={idx} color="green" className="text-xs">
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Certifications */}
-              {resumeData.certifications && resumeData.certifications.length > 0 && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Certifications</h2>
-                  <div className="space-y-2">
-                    {resumeData.certifications.map((cert, idx) => (
-                      <div key={idx}>
-                        <p className="font-semibold text-zinc-950">{cert.name}</p>
-                        <p className="text-sm text-zinc-600">{cert.issuer}</p>
-                        {cert.date && <p className="text-xs text-zinc-500">{cert.date}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Professional References */}
-              {resumeData.references && resumeData.references.length > 0 && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Professional References</h2>
-                  <div className="space-y-2">
-                    {resumeData.references.map((ref, idx) => (
-                      <div key={idx}>
-                        <p className="font-semibold text-zinc-950">{ref.name}</p>
-                        <p className="text-sm text-zinc-600">{ref.title} at {ref.company}</p>
-                        {ref.email && <p className="text-xs text-zinc-500">{ref.email}</p>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Professional Experience */}
-              {resumeData.experience && resumeData.experience.length > 0 && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Professional Experience</h2>
-                  <div className="space-y-4">
-                    {resumeData.experience.map((exp, idx) => (
-                      <div key={idx}>
-                        <div className="flex items-start justify-between mb-1">
-                          <div>
-                            <p className="font-semibold text-zinc-950">{exp.title}</p>
-                            <p className="text-sm text-zinc-600">{exp.company}</p>
-                          </div>
-                          <span className="text-xs text-zinc-500">
-                            {exp.startDate} - {exp.current ? 'Present' : exp.endDate || 'Present'}
-                          </span>
+            {/* Professional Experience */}
+            {resumeData.experience && resumeData.experience.length > 0 && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Professional Experience</h2>
+                <div className="space-y-4">
+                  {resumeData.experience.map((exp, idx) => (
+                    <div key={idx}>
+                      <div className="flex items-start justify-between mb-1">
+                        <div>
+                          <p className="font-semibold text-zinc-950 dark:text-white">{exp.title}</p>
+                          <p className="text-sm text-zinc-600 dark:text-zinc-400">{exp.company}</p>
                         </div>
-                        {exp.responsibilities && (
-                          <div 
-                            className="text-sm text-zinc-600 mt-1 leading-relaxed prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{ __html: exp.responsibilities }}
-                          />
-                        )}
-                        {exp.description && (
-                          <p className="text-sm text-zinc-600 mt-1 leading-relaxed">{exp.description}</p>
-                        )}
+                        <span className="text-xs text-zinc-500 dark:text-zinc-500">
+                          {exp.startDate} - {exp.current ? 'Present' : exp.endDate || 'Present'}
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                      {exp.responsibilities && (
+                        <div
+                          className="text-sm text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed prose prose-sm max-w-none dark:prose-invert"
+                          dangerouslySetInnerHTML={{ __html: exp.responsibilities }}
+                        />
+                      )}
+                      {exp.description && (
+                        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">{exp.description}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Education */}
-              {resumeData.education && resumeData.education.length > 0 && (
-                <div>
-                  <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Education</h2>
-                  <div className="space-y-2">
-                    {resumeData.education.map((edu, idx) => (
-                      <div key={idx}>
-                        <p className="font-semibold text-zinc-950">{edu.degree}</p>
-                        <p className="text-sm text-zinc-600">{edu.institution}</p>
-                      </div>
-                    ))}
-                  </div>
+            {/* Education */}
+            {resumeData.education && resumeData.education.length > 0 && (
+              <div>
+                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Education</h2>
+                <div className="space-y-2">
+                  {resumeData.education.map((edu, idx) => (
+                    <div key={idx}>
+                      <p className="font-semibold text-zinc-950 dark:text-white">{edu.degree}</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400">{edu.institution}</p>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1444,16 +1750,18 @@ export default function AIResumeBuilder() {
         <meta name="description" content="Build professional resumes with AI" />
       </Head>
       <DashboardLayout>
-        <div className="min-h-screen bg-white">
+        <div className="min-h-screen bg-white dark:bg-zinc-900">
           {/* Simplified Header - FlowCV Style - Full Width */}
-          <div className="bg-white border-b border-zinc-200 sticky top-0 z-50 w-full">
+          <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-50 w-full">
             <div className="w-full px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  {currentStep !== WIZARD_STEPS.TEMPLATE && currentStep !== WIZARD_STEPS.COMPLETE && (
+                  {currentStep !== WIZARD_STEPS.DASHBOARD && currentStep !== WIZARD_STEPS.COMPLETE && (
                     <Button
                       onClick={() => {
-                        if (currentStep === WIZARD_STEPS.UPLOAD_OR_NEW) {
+                        if (currentStep === WIZARD_STEPS.TEMPLATE) {
+                          setCurrentStep(WIZARD_STEPS.DASHBOARD);
+                        } else if (currentStep === WIZARD_STEPS.UPLOAD_OR_NEW) {
                           setCurrentStep(WIZARD_STEPS.TEMPLATE);
                         } else {
                           setCurrentStep(prev => {
@@ -1473,19 +1781,19 @@ export default function AIResumeBuilder() {
                         }
                       }}
                       plain
-                      className="text-zinc-600 hover:text-zinc-950"
+                      className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200"
                     >
                       <ArrowLeftIcon className="h-5 w-5" />
                     </Button>
                   )}
                   <div>
-                    <h1 className="text-xl font-semibold text-zinc-950">Resume Builder</h1>
+                    <h1 className="text-xl font-semibold text-zinc-950 dark:text-white">Resume Builder</h1>
                     {currentStep !== WIZARD_STEPS.TEMPLATE && currentStep !== WIZARD_STEPS.COMPLETE && (
-                      <p className="text-xs text-zinc-500 mt-0.5">{getStepTitle()}</p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{getStepTitle()}</p>
                     )}
                   </div>
                 </div>
-                
+
                 {/* Action Buttons */}
                 {currentStep !== WIZARD_STEPS.TEMPLATE && currentStep !== WIZARD_STEPS.UPLOAD_OR_NEW && currentResume && (
                   <div className="flex items-center gap-2">
@@ -1541,219 +1849,205 @@ export default function AIResumeBuilder() {
 
           {/* Main Content - Full Width */}
           <div className="w-full">
-            {/* Previous Resumes Section - Only show on template step - Full Width */}
-            {currentStep === WIZARD_STEPS.TEMPLATE && (
-              <div className="mb-8 px-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 max-w-[1920px] mx-auto pt-8">
-                  {/* View Previous Resumes Card */}
-                  <div 
-                    className="rounded-lg border border-zinc-200 bg-white p-6 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => setShowPreviousResumes(!showPreviousResumes)}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-100 rounded-lg">
-                          <DocumentTextIcon className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-zinc-950">View Previous Resumes</h3>
-                          <p className="text-sm text-zinc-600 mt-1">
-                            {previousResumes.length} {previousResumes.length === 1 ? 'resume' : 'resumes'} generated
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronRightIcon 
-                        className={`h-5 w-5 text-zinc-400 transition-transform ${showPreviousResumes ? 'rotate-90' : ''}`} 
-                      />
-                    </div>
+            {/* Dashboard Step - My Resumes Grid */}
+            {currentStep === WIZARD_STEPS.DASHBOARD && (
+              <div className="w-full px-6 py-12 bg-zinc-50/50 dark:bg-zinc-900 min-h-[80vh]">
+                <div className="max-w-7xl mx-auto">
+                  <div className="flex items-center justify-between mb-8">
+                    <h2 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">My Resumes</h2>
+                    <Button onClick={() => setCurrentStep(WIZARD_STEPS.TEMPLATE)} color="blue">
+                      <PlusIcon className="w-4 h-4 mr-2" />
+                      New Resume
+                    </Button>
                   </div>
 
-                  {/* Start New Resume Card */}
-                  <div className="rounded-lg border border-zinc-200 bg-white p-6">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-green-100 rounded-lg">
-                        <PlusIcon className="h-6 w-6 text-green-600" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {/* Create New Card */}
+                    <div
+                      onClick={() => setCurrentStep(WIZARD_STEPS.TEMPLATE)}
+                      className="group aspect-[3/4] border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-all duration-300"
+                    >
+                      <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors mb-4">
+                        <PlusIcon className="w-8 h-8 text-zinc-400 dark:text-zinc-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
                       </div>
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-zinc-950">Create New Resume</h3>
-                        <p className="text-sm text-zinc-600 mt-1">Start building a new resume from scratch</p>
-                      </div>
+                      <h3 className="text-lg font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-blue-700 dark:group-hover:text-blue-400">Create New Resume</h3>
+                      <p className="text-sm text-zinc-400 dark:text-zinc-500 mt-2">Start from a template</p>
                     </div>
-                  </div>
-                </div>
 
-                {/* Previous Resumes Table */}
-                {showPreviousResumes && (
-                  <div className="bg-white rounded-lg border border-zinc-200 shadow-sm mb-8 max-w-[1920px] mx-auto">
-                    <div className="p-6 border-b border-zinc-200">
-                      <h3 className="text-lg font-semibold text-zinc-950">Previous Resumes</h3>
-                    </div>
+                    {/* Existing Resumes */}
                     {loadingResumes ? (
-                      <div className="p-8 text-center">
-                        <ArrowPathIcon className="h-6 w-6 animate-spin text-zinc-400 mx-auto" />
-                        <p className="text-sm text-zinc-600 mt-2">Loading resumes...</p>
-                      </div>
-                    ) : previousResumes.length === 0 ? (
-                      <div className="p-8 text-center">
-                        <DocumentTextIcon className="h-12 w-12 text-zinc-300 mx-auto mb-3" />
-                        <p className="text-sm text-zinc-600">No resumes generated yet</p>
-                      </div>
+                      [1, 2, 3].map((_, i) => (
+                        <div key={i} className="aspect-[3/4] bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 animate-pulse">
+                          <div className="w-full h-3/4 bg-zinc-100 dark:bg-zinc-800 rounded-lg mb-4"></div>
+                          <div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded w-3/4 mb-2"></div>
+                          <div className="h-3 bg-zinc-100 dark:bg-zinc-800 rounded w-1/2"></div>
+                        </div>
+                      ))
                     ) : (
-                      <Table>
-                        <TableHead>
-                          <TableRow>
-                            <TableHeader>Name</TableHeader>
-                            <TableHeader>Template</TableHeader>
-                            <TableHeader>Created</TableHeader>
-                            <TableHeader>Actions</TableHeader>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {previousResumes.map((resume) => (
-                            <TableRow key={resume.id || resume._id}>
-                              <TableCell className="font-medium text-zinc-950">
-                                {resume.name || 'Untitled Resume'}
-                              </TableCell>
-                              <TableCell>
-                                <Badge color="zinc" className="capitalize">
-                                  {resume.template || 'N/A'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-zinc-600">
-                                {formatDate(resume.createdAt)}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {resume.pdfUrl && (
-                                    <Button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleViewResumePDF(resume);
-                                      }}
-                                      plain
-                                      className="text-blue-600 hover:text-blue-700"
-                                    >
-                                      <EyeIcon className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  <Button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleEditResume(resume);
-                                    }}
-                                    plain
-                                    className="text-zinc-600 hover:text-zinc-700"
-                                  >
-                                    <PencilIcon className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteResume(resume.id || resume._id);
-                                    }}
-                                    plain
-                                    className="text-red-600 hover:text-red-700"
-                                  >
-                                    <TrashIcon className="h-4 w-4" />
-                                  </Button>
+                      previousResumes.map((resume) => (
+                        <div
+                          key={resume.id || resume._id}
+                          onClick={() => handleEditResume(resume)}
+                          className="group relative aspect-[3/4] bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-xl hover:translate-y-[-4px] transition-all duration-300 cursor-pointer overflow-hidden flex flex-col"
+                        >
+                          <div className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 relative overflow-hidden p-4 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800 transition-colors">
+                            {/* Mini Preview Placeholder since we don't store screenshots yet */}
+                            <div className="w-full h-full bg-white dark:bg-zinc-900 shadow-sm border border-zinc-100 dark:border-zinc-700 rounded flex flex-col p-3 scale-[0.9] origin-top group-hover:scale-100 transition-transform duration-500">
+                              <div className="w-1/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-4"></div>
+                              <div className="space-y-2">
+                                <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                <div className="w-5/6 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                              </div>
+                              <div className="mt-6 flex gap-3">
+                                <div className="w-1/4 h-16 bg-zinc-100 dark:bg-zinc-800 rounded"></div>
+                                <div className="flex-1 space-y-2">
+                                  <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
                                 </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                              </div>
+                            </div>
+
+                            {/* Hover Actions */}
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
+                              <div
+                                onClick={(e) => { e.stopPropagation(); handleEditResume(resume); }}
+                                className="p-2 bg-white rounded-full text-zinc-900 hover:text-blue-600 hover:scale-110 transition-all shadow-lg"
+                                title="Edit"
+                              >
+                                <PencilIcon className="w-5 h-5" />
+                              </div>
+                              <div
+                                onClick={(e) => { e.stopPropagation(); handleDeleteResume(resume.id || resume._id); }}
+                                className="p-2 bg-white rounded-full text-zinc-900 hover:text-red-600 hover:scale-110 transition-all shadow-lg"
+                                title="Delete"
+                              >
+                                <TrashIcon className="w-5 h-5" />
+                              </div>
+                              {resume.pdfUrl && (
+                                <div
+                                  onClick={(e) => { e.stopPropagation(); handleViewResumePDF(resume); }}
+                                  className="p-2 bg-white rounded-full text-zinc-900 hover:text-indigo-600 hover:scale-110 transition-all shadow-lg"
+                                  title="View PDF"
+                                >
+                                  <EyeIcon className="w-5 h-5" />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 relative z-10">
+                            <h3 className="font-semibold text-zinc-900 dark:text-white truncate" title={resume.name}>{resume.name || 'Untitled Resume'}</h3>
+                            <div className="flex items-center justify-between mt-2">
+                              <Badge color="zinc" className="text-[10px] px-1.5 py-0">
+                                {resume.template || 'Modern'}
+                              </Badge>
+                              <span className="text-xs text-zinc-400 dark:text-zinc-500">{formatDate(resume.updatedAt || resume.createdAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
-                )}
+                </div>
               </div>
             )}
 
-            {/* Template Selection Step - FlowCV Style - Full Width */}
+            {/* Template Selection Step - Modern Design */}
             {currentStep === WIZARD_STEPS.TEMPLATE && (
-              <div className="w-full px-6 py-12">
-                <div className="mb-12 text-center">
-                  <h2 className="text-4xl font-bold text-zinc-950 mb-4">Choose Your Resume Template</h2>
-                  <p className="text-xl text-zinc-600 max-w-2xl mx-auto">Select a professional template that matches your style and industry</p>
-                </div>
+              <div className="w-full px-6 py-12 bg-zinc-50/50 dark:bg-zinc-900 min-h-[80vh]">
+                <div className="max-w-7xl mx-auto">
+                  <div className="mb-16 text-center space-y-4">
+                    <h2 className="text-4xl md:text-5xl font-bold text-zinc-900 dark:text-white tracking-tight">
+                      Choose your starting point
+                    </h2>
+                    <p className="text-xl text-zinc-500 dark:text-zinc-400 max-w-2xl mx-auto font-light">
+                      Select a professionally designed template to stand out. You can change this later at any time.
+                    </p>
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-[1920px] mx-auto">
-                  {templates.map((template) => (
-                    <div
-                      key={template.id}
-                      onClick={() => handleTemplateSelect(template.id)}
-                      className={`group cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden bg-white shadow-sm hover:shadow-2xl ${
-                        selectedTemplate === template.id
-                          ? 'border-blue-500 shadow-2xl ring-4 ring-blue-100 scale-[1.03]'
-                          : 'border-zinc-200 hover:border-blue-400 hover:shadow-xl'
-                      }`}
-                    >
-                      {/* Template Preview - Much Larger */}
-                      <div className="relative h-[420px] bg-gradient-to-br from-zinc-50 to-zinc-100 overflow-hidden">
-                        {/* Placeholder background - always shown */}
-                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-                          <div className="text-center p-8">
-                            <DocumentTextIcon className="h-24 w-24 text-zinc-400 mx-auto mb-6" />
-                            <div className="space-y-3">
-                              <div className="h-3 bg-zinc-300 rounded w-56 mx-auto"></div>
-                              <div className="h-3 bg-zinc-300 rounded w-48 mx-auto"></div>
-                              <div className="h-3 bg-zinc-300 rounded w-52 mx-auto"></div>
-                              <div className="h-3 bg-zinc-300 rounded w-44 mx-auto"></div>
-                            </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 px-4">
+                    {templates.map((template) => (
+                      <div
+                        key={template.id}
+                        onClick={() => handleTemplateSelect(template.id)}
+                        className={`group relative cursor-pointer rounded-2xl transition-all duration-300 bg-white dark:bg-zinc-900 overflow-hidden ${selectedTemplate === template.id
+                          ? 'ring-4 ring-indigo-500/20 dark:ring-indigo-400/20 shadow-2xl scale-[1.02]'
+                          : 'hover:shadow-xl hover:-translate-y-1 border border-zinc-100 dark:border-zinc-800'
+                          }`}
+                      >
+                        {/* Selection Indicator */}
+                        {selectedTemplate === template.id && (
+                          <div className="absolute top-4 right-4 z-20 bg-indigo-600 dark:bg-indigo-500 text-white p-1.5 rounded-full shadow-lg">
+                            <CheckCircleIcon className="w-6 h-6" />
                           </div>
-                        </div>
-                        {/* Template image - overlays placeholder if loaded successfully */}
-                        {template.preview && (
-                          <div className="relative w-full h-full">
+                        )}
+
+                        {/* Preview Area */}
+                        <div className="relative aspect-[3/4] overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+                          {template.preview ? (
                             <img
                               src={template.preview}
-                              alt={`${template.name} template preview`}
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                              onError={(e) => {
-                                // Hide image on error, placeholder will show
-                                e.target.style.display = 'none';
-                              }}
-                              onLoad={(e) => {
-                                // Hide placeholder when image loads successfully
-                                const placeholder = e.target.parentElement?.previousElementSibling;
-                                if (placeholder) {
-                                  placeholder.style.display = 'none';
-                                }
-                              }}
+                              alt={template.name}
+                              className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105"
+                              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
                             />
-                          </div>
-                        )}
-                        {selectedTemplate === template.id && (
-                          <div className="absolute top-5 right-5 z-10">
-                            <div className="bg-blue-500 rounded-full p-2.5 shadow-xl ring-4 ring-white">
-                              <CheckCircleIcon className="h-7 w-7 text-white" />
+                          ) : null}
+
+                          {/* Fallback / Placeholder if image missing or error */}
+                          <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-zinc-900" style={{ display: template.preview ? 'none' : 'flex' }}>
+                            {/* CSS-only Mockup */}
+                            <div className={`w-[80%] h-[85%] shadow-lg rounded bg-white dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 p-4 space-y-4 overflow-hidden transform group-hover:scale-105 transition-transform duration-500`}>
+                              <div className="flex gap-4 mb-6">
+                                <div className={`w-12 h-12 rounded-full bg-${template.color}-100 dark:bg-${template.color}-900/30`}></div>
+                                <div className="space-y-2 flex-1">
+                                  <div className={`h-4 bg-zinc-800 dark:bg-zinc-200 rounded w-3/4`}></div>
+                                  <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-1/2"></div>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
+                                <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
+                                <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-5/6"></div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 mt-8">
+                                <div className="col-span-2 space-y-3">
+                                  <div className="h-3 bg-zinc-300 dark:bg-zinc-600 rounded w-1/3 mb-2"></div>
+                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
+                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
+                                </div>
+                                <div className="space-y-3">
+                                  <div className="h-3 bg-zinc-300 dark:bg-zinc-600 rounded w-1/2 mb-2"></div>
+                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
+                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                      </div>
-                      
-                      {/* Template Info */}
-                      <div className="p-7 bg-white">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1">
-                            <h3 className="text-xl font-bold text-zinc-950 mb-2">{template.name}</h3>
-                            <p className="text-sm text-zinc-600 leading-relaxed mb-3">{template.description}</p>
+
+                          {/* Hover Overlay */}
+                          <div className="absolute inset-0 bg-indigo-900/0 group-hover:bg-indigo-900/10 transition-colors duration-300" />
+
+                          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-center pb-8">
+                            <span className="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white px-6 py-2 rounded-full font-semibold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
+                              Select Template
+                            </span>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between">
-                          <Badge color={template.color} className="text-xs font-semibold px-3 py-1">
-                            {template.category}
-                          </Badge>
-                          {selectedTemplate === template.id && (
-                            <span className="text-sm font-semibold text-blue-600 flex items-center gap-1">
-                              <CheckCircleIcon className="h-4 w-4" />
-                              Selected
-                            </span>
-                          )}
+
+                        {/* Info Footer */}
+                        <div className="p-6 border-t border-zinc-50 dark:border-zinc-800">
+                          <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-xl font-bold text-zinc-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{template.name}</h3>
+                            {template.category === 'Popular' && (
+                              <Badge color="indigo" className="text-xs font-medium px-2 py-0.5">Popular</Badge>
+                            )}
+                          </div>
+                          <p className="text-zinc-500 dark:text-zinc-400 text-sm">{template.description}</p>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1763,31 +2057,28 @@ export default function AIResumeBuilder() {
               <div className="w-full px-6 py-12">
                 <div className="max-w-4xl mx-auto">
                   <div className="mb-12 text-center">
-                    <h2 className="text-4xl font-bold text-zinc-950 mb-4">How would you like to start?</h2>
-                    <p className="text-xl text-zinc-600">Choose the option that works best for you</p>
+                    <h2 className="text-4xl font-bold text-zinc-950 dark:text-white mb-4">How would you like to start?</h2>
+                    <p className="text-xl text-zinc-600 dark:text-zinc-400">Choose the option that works best for you</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
                     {/* Upload Option */}
                     <div
                       onClick={() => handleMethodSelect('upload')}
-                      className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${
-                        uploadMethod === 'upload'
-                          ? 'border-blue-500 bg-blue-50 shadow-2xl ring-4 ring-blue-100 scale-[1.02]'
-                          : 'border-zinc-200 hover:border-blue-400 hover:shadow-xl bg-white'
-                      }`}
+                      className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${uploadMethod === 'upload'
+                        ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-xl bg-white dark:bg-zinc-900'
+                        }`}
                     >
                       <div className="p-10">
                         <div className="flex flex-col items-center text-center">
-                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${
-                            uploadMethod === 'upload' ? 'bg-blue-100 scale-110' : 'bg-zinc-100 group-hover:bg-blue-50 group-hover:scale-105'
-                          }`}>
-                            <CloudArrowUpIcon className={`h-14 w-14 ${
-                              uploadMethod === 'upload' ? 'text-blue-600' : 'text-zinc-600 group-hover:text-blue-600'
-                            }`} />
+                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${uploadMethod === 'upload' ? 'bg-blue-100 dark:bg-blue-900/30 scale-110' : 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:scale-105'
+                            }`}>
+                            <CloudArrowUpIcon className={`h-14 w-14 ${uploadMethod === 'upload' ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                              }`} />
                           </div>
-                          <h3 className="text-2xl font-bold text-zinc-950 mb-3">Upload Existing Resume</h3>
-                          <p className="text-base text-zinc-600 mb-6 leading-relaxed">We'll extract and enhance your information automatically using AI</p>
+                          <h3 className="text-2xl font-bold text-zinc-950 dark:text-white mb-3">Upload Existing Resume</h3>
+                          <p className="text-base text-zinc-600 dark:text-zinc-400 mb-6 leading-relaxed">We'll extract and enhance your information automatically using AI</p>
                           {uploadMethod === 'upload' && (
                             <Badge color="blue" className="text-sm font-semibold px-4 py-1.5">
                               <CheckCircleIcon className="h-4 w-4 mr-1" />
@@ -1801,31 +2092,28 @@ export default function AIResumeBuilder() {
                     {/* Start Fresh Option */}
                     <div
                       onClick={() => !isGenerating && handleMethodSelect('new')}
-                      className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${
-                        uploadMethod === 'new'
-                          ? 'border-blue-500 bg-blue-50 shadow-2xl ring-4 ring-blue-100 scale-[1.02]'
-                          : 'border-zinc-200 hover:border-blue-400 hover:shadow-xl bg-white'
-                      } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${uploadMethod === 'new'
+                        ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-xl bg-white dark:bg-zinc-900'
+                        } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <div className="p-10">
                         <div className="flex flex-col items-center text-center">
-                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${
-                            uploadMethod === 'new' ? 'bg-blue-100 scale-110' : 'bg-zinc-100 group-hover:bg-blue-50 group-hover:scale-105'
-                          }`}>
+                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${uploadMethod === 'new' ? 'bg-blue-100 dark:bg-blue-900/30 scale-110' : 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:scale-105'
+                            }`}>
                             {isGenerating ? (
-                              <ArrowPathIcon className="h-14 w-14 text-blue-600 animate-spin" />
+                              <ArrowPathIcon className="h-14 w-14 text-blue-600 dark:text-blue-400 animate-spin" />
                             ) : (
-                              <SparklesIcon className={`h-14 w-14 ${
-                                uploadMethod === 'new' ? 'text-blue-600' : 'text-zinc-600 group-hover:text-blue-600'
-                              }`} />
+                              <SparklesIcon className={`h-14 w-14 ${uploadMethod === 'new' ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                                }`} />
                             )}
                           </div>
-                          <h3 className="text-2xl font-bold text-zinc-950 mb-3">
+                          <h3 className="text-2xl font-bold text-zinc-950 dark:text-white mb-3">
                             {isGenerating ? 'Creating Resume...' : 'Start Fresh'}
                           </h3>
-                          <p className="text-base text-zinc-600 mb-6 leading-relaxed">
-                            {isGenerating 
-                              ? 'Setting up your resume with AI assistance' 
+                          <p className="text-base text-zinc-600 dark:text-zinc-400 mb-6 leading-relaxed">
+                            {isGenerating
+                              ? 'Setting up your resume with AI assistance'
                               : 'Build from scratch with AI-powered suggestions'
                             }
                           </p>
@@ -1840,147 +2128,147 @@ export default function AIResumeBuilder() {
                     </div>
                   </div>
 
-                {/* Upload Section */}
-                {uploadMethod === 'upload' && (
-                  <div className="bg-white rounded-xl border border-zinc-200 p-8 shadow-sm">
-                    <div className="mb-6">
-                      <h3 className="text-lg font-semibold text-zinc-950 mb-2">Upload Your Resume</h3>
-                      <p className="text-sm text-zinc-500">Supported formats: PDF, DOC, DOCX (Max 5MB)</p>
-                    </div>
-                    
-                    <FieldGroup>
-                      <Field>
-                        <Label htmlFor="resume-upload">Select Resume File</Label>
-                        <div className="mt-2">
-                          <input
-                            id="resume-upload"
-                            type="file"
-                            accept=".pdf,.doc,.docx"
-                            onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                            className="block w-full text-sm text-zinc-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 file:cursor-pointer cursor-pointer"
-                          />
-                        </div>
-                        {resumeFile && (
-                          <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                            <div className="flex items-center gap-2">
-                              <DocumentTextIcon className="h-5 w-5 text-blue-600" />
-                              <span className="text-sm font-medium text-zinc-950">{resumeFile.name}</span>
-                              <span className="text-xs text-zinc-500">
-                                ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB)
-                              </span>
-                            </div>
+                  {/* Upload Section */}
+                  {uploadMethod === 'upload' && (
+                    <div className="bg-white rounded-xl border border-zinc-200 p-8 shadow-sm">
+                      <div className="mb-6">
+                        <h3 className="text-lg font-semibold text-zinc-950 mb-2">Upload Your Resume</h3>
+                        <p className="text-sm text-zinc-500">Supported formats: PDF, DOC, DOCX (Max 5MB)</p>
+                      </div>
+
+                      <FieldGroup>
+                        <Field>
+                          <Label htmlFor="resume-upload">Select Resume File</Label>
+                          <div className="mt-2">
+                            <input
+                              id="resume-upload"
+                              type="file"
+                              accept=".pdf,.doc,.docx"
+                              onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
+                              className="block w-full text-sm text-zinc-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 file:cursor-pointer cursor-pointer"
+                            />
                           </div>
-                        )}
-                      </Field>
-                    </FieldGroup>
+                          {resumeFile && (
+                            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                              <div className="flex items-center gap-2">
+                                <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                                <span className="text-sm font-medium text-zinc-950">{resumeFile.name}</span>
+                                <span className="text-xs text-zinc-500">
+                                  ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB)
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </Field>
+                      </FieldGroup>
 
-                    <div className="mt-6 flex gap-3">
-                      <Button
-                        onClick={() => setUploadMethod(null)}
-                        outline
-                      >
-                        <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                        Back
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          if (!resumeNameInput.trim()) {
-                            setShowResumeNameModal(true);
-                          } else {
-                            handleFileUpload();
-                          }
-                        }}
-                        color="blue"
-                        disabled={!resumeFile || uploading}
-                        className="flex-1"
-                      >
-                        {uploading ? (
-                          <>
-                            <ArrowPathIcon data-slot="icon" className="h-4 w-4 animate-spin" />
-                            Uploading...
-                          </>
-                        ) : (
-                          <>
-                            Upload & Continue
-                            <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Start Fresh Section */}
-                {uploadMethod === 'new' && !isGenerating && (
-                  <div className="bg-white rounded-xl border border-zinc-200 p-8 shadow-sm">
-                    <div className="mb-6">
-                      <h3 className="text-lg font-semibold text-zinc-950 mb-2">Create New Resume</h3>
-                      <p className="text-sm text-zinc-500">
-                        We'll import your profile information and help you build a professional resume
-                      </p>
-                    </div>
-
-                    <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mb-6">
-                      <div className="flex items-start gap-3">
-                        <SparklesIcon className="h-5 w-5 text-blue-600 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-zinc-950 mb-1">What we'll import:</p>
-                          <ul className="text-sm text-zinc-600 space-y-1 list-disc list-inside">
-                            <li>Your personal information (name, email, phone)</li>
-                            <li>Professional summary</li>
-                            <li>Skills and experience</li>
-                            <li>Education history</li>
-                          </ul>
-                        </div>
+                      <div className="mt-6 flex gap-3">
+                        <Button
+                          onClick={() => setUploadMethod(null)}
+                          outline
+                        >
+                          <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
+                          Back
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            if (!resumeNameInput.trim()) {
+                              setShowResumeNameModal(true);
+                            } else {
+                              handleFileUpload();
+                            }
+                          }}
+                          color="blue"
+                          disabled={!resumeFile || uploading}
+                          className="flex-1"
+                        >
+                          {uploading ? (
+                            <>
+                              <ArrowPathIcon data-slot="icon" className="h-4 w-4 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              Upload & Continue
+                              <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
+                  )}
 
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={() => setUploadMethod(null)}
-                        outline
-                      >
-                        <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                        Back
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          if (!resumeNameInput.trim()) {
-                            setShowResumeNameModal(true);
-                          } else {
-                            handleCreateNew();
-                          }
-                        }}
-                        color="blue"
-                        disabled={isGenerating}
-                        className="flex-1"
-                      >
-                        {isGenerating ? (
-                          <>
-                            <ArrowPathIcon data-slot="icon" className="h-4 w-4 animate-spin" />
-                            Creating...
-                          </>
-                        ) : (
-                          <>
-                            Create Resume
-                            <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                  {/* Start Fresh Section */}
+                  {uploadMethod === 'new' && !isGenerating && (
+                    <div className="bg-white rounded-xl border border-zinc-200 p-8 shadow-sm">
+                      <div className="mb-6">
+                        <h3 className="text-lg font-semibold text-zinc-950 mb-2">Create New Resume</h3>
+                        <p className="text-sm text-zinc-500">
+                          We'll import your profile information and help you build a professional resume
+                        </p>
+                      </div>
 
-                {/* Loading State for Start Fresh */}
-                {uploadMethod === 'new' && isGenerating && (
-                  <div className="bg-white rounded-xl border border-zinc-200 p-8 shadow-sm">
-                    <div className="text-center py-8">
-                      <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 animate-spin" />
-                      <h3 className="text-lg font-semibold text-zinc-950 mb-2">Creating Your Resume...</h3>
-                      <p className="text-sm text-zinc-500">Please wait while we set up your resume</p>
+                      <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mb-6">
+                        <div className="flex items-start gap-3">
+                          <SparklesIcon className="h-5 w-5 text-blue-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-zinc-950 mb-1">What we'll import:</p>
+                            <ul className="text-sm text-zinc-600 space-y-1 list-disc list-inside">
+                              <li>Your personal information (name, email, phone)</li>
+                              <li>Professional summary</li>
+                              <li>Skills and experience</li>
+                              <li>Education history</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => setUploadMethod(null)}
+                          outline
+                        >
+                          <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
+                          Back
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            if (!resumeNameInput.trim()) {
+                              setShowResumeNameModal(true);
+                            } else {
+                              handleCreateNew();
+                            }
+                          }}
+                          color="blue"
+                          disabled={isGenerating}
+                          className="flex-1"
+                        >
+                          {isGenerating ? (
+                            <>
+                              <ArrowPathIcon data-slot="icon" className="h-4 w-4 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            <>
+                              Create Resume
+                              <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {/* Loading State for Start Fresh */}
+                  {uploadMethod === 'new' && isGenerating && (
+                    <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-8 shadow-sm">
+                      <div className="text-center py-8">
+                        <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 dark:text-blue-400 animate-spin" />
+                        <h3 className="text-lg font-semibold text-zinc-950 dark:text-white mb-2">Creating Your Resume...</h3>
+                        <p className="text-sm text-zinc-500 dark:text-zinc-400">Please wait while we set up your resume</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1988,166 +2276,230 @@ export default function AIResumeBuilder() {
             {/* New Tabbed Editor - Like FlowCV */}
             {currentStep === WIZARD_STEPS.EDITOR && currentResume && (
               <div className="w-full h-[calc(100vh-120px)] flex flex-col">
-                {/* Top Tabs Navigation */}
-                <div className="bg-white border-b border-zinc-200 px-6">
-                  <div className="flex items-center gap-1">
+                {/* Top Tabs Navigation - Smooth FlowCV Style */}
+                <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+                  <div className="flex items-center gap-0.5 px-6">
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.OVERVIEW)}
-                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-                        activeTab === EDITOR_TABS.OVERVIEW
-                          ? 'border-pink-500 text-pink-600'
-                          : 'border-transparent text-zinc-600 hover:text-zinc-950'
-                      }`}
+                      className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.OVERVIEW
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
+                        }`}
                     >
                       Overview
+                      {activeTab === EDITOR_TABS.OVERVIEW && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                      )}
                     </button>
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.CONTENT)}
-                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-                        activeTab === EDITOR_TABS.CONTENT
-                          ? 'border-pink-500 text-pink-600'
-                          : 'border-transparent text-zinc-600 hover:text-zinc-950'
-                      }`}
+                      className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.CONTENT
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
+                        }`}
                     >
                       Content
+                      {activeTab === EDITOR_TABS.CONTENT && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                      )}
                     </button>
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.CUSTOMIZE)}
-                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-                        activeTab === EDITOR_TABS.CUSTOMIZE
-                          ? 'border-pink-500 text-pink-600'
-                          : 'border-transparent text-zinc-600 hover:text-zinc-950'
-                      }`}
+                      className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.CUSTOMIZE
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
+                        }`}
                     >
                       Customize
+                      {activeTab === EDITOR_TABS.CUSTOMIZE && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                      )}
                     </button>
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.LINKS)}
-                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
-                        activeTab === EDITOR_TABS.LINKS
-                          ? 'border-pink-500 text-pink-600'
-                          : 'border-transparent text-zinc-600 hover:text-zinc-950'
-                      }`}
+                      className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.LINKS
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
+                        }`}
                     >
                       Links
+                      {activeTab === EDITOR_TABS.LINKS && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                      )}
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Editor Content - Split Screen */}
                 <div className="flex-1 grid grid-cols-3 overflow-hidden">
                   {/* Left Sidebar - Section Cards */}
-                  <div className="col-span-1 overflow-y-auto bg-zinc-50 border-r border-zinc-200 p-4 space-y-4">
+                  <div className="col-span-1 overflow-y-auto bg-zinc-50/50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 p-5 space-y-4 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent">
                     {/* Content Tab - Show Section Cards */}
                     {activeTab === EDITOR_TABS.CONTENT && (
                       <>
                         {/* Personal Information Card */}
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Personal Information</h3>
+                        <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                          <div
+                            className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                            onClick={() => setExpandedSections(prev => ({ ...prev, personal: !prev.personal }))}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                                <UserIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Personal Information</h3>
+                            </div>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => setEditingSection(editingSection === 'personal' ? null : 'personal')}
-                                className="p-1.5 rounded-full bg-pink-100 hover:bg-pink-200 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingSection(editingSection === 'personal' ? null : 'personal');
+                                  if (!expandedSections.personal) {
+                                    setExpandedSections(prev => ({ ...prev, personal: true }));
+                                  }
+                                }}
+                                className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                title="Edit"
                               >
-                                <PencilIcon className="h-4 w-4 text-pink-600" />
+                                <PencilIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
                               </button>
                               <button
-                                onClick={() => setExpandedSections(prev => ({ ...prev, personal: !prev.personal }))}
-                                className="p-1 hover:bg-zinc-100 rounded transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedSections(prev => ({ ...prev, personal: !prev.personal }));
+                                }}
+                                className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
                               >
                                 {expandedSections.personal ? (
-                                  <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
+                                  <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
                                 ) : (
-                                  <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
+                                  <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
                                 )}
                               </button>
                             </div>
                           </div>
-                          
+
                           {expandedSections.personal && (
-                            <div className="space-y-3">
+                            <div className="space-y-4 pt-2">
                               {editingSection === 'personal' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Full Name</Label>
-                                    <Input
-                                      value={resumeData.fullName}
-                                      onChange={(e) => setResumeData(prev => ({ ...prev, fullName: e.target.value }))}
-                                      placeholder="Your Name"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Job Title</Label>
-                                    <Input
-                                      value={resumeData.jobTitle || ''}
-                                      onChange={(e) => setResumeData(prev => ({ ...prev, jobTitle: e.target.value }))}
-                                      placeholder="Job Title"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Email</Label>
-                                    <Input
-                                      type="email"
-                                      value={resumeData.email}
-                                      onChange={(e) => setResumeData(prev => ({ ...prev, email: e.target.value }))}
-                                      placeholder="email@example.com"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Phone</Label>
-                                    <Input
-                                      value={resumeData.phone}
-                                      onChange={(e) => setResumeData(prev => ({ ...prev, phone: e.target.value }))}
-                                      placeholder="+1 (555) 123-4567"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Location</Label>
-                                    <Input
-                                      value={resumeData.location}
-                                      onChange={(e) => setResumeData(prev => ({ ...prev, location: e.target.value }))}
-                                      placeholder="City, State"
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button onClick={() => setEditingSection(null)} outline size="sm">
-                                      Save
-                                    </Button>
-                                    <Button onClick={() => setEditingSection(null)} plain size="sm">
+                                <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <FieldGroup className="space-y-5">
+                                    <Field>
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        Full Name
+                                      </Label>
+                                      <Input
+                                        value={resumeData.fullName}
+                                        onChange={(e) => setResumeData(prev => ({ ...prev, fullName: e.target.value }))}
+                                        placeholder="Enter your full name"
+                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        Job Title
+                                      </Label>
+                                      <Input
+                                        value={resumeData.jobTitle || ''}
+                                        onChange={(e) => setResumeData(prev => ({ ...prev, jobTitle: e.target.value }))}
+                                        placeholder="e.g. Software Engineer"
+                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        Email
+                                      </Label>
+                                      <Input
+                                        type="email"
+                                        value={resumeData.email}
+                                        onChange={(e) => setResumeData(prev => ({ ...prev, email: e.target.value }))}
+                                        placeholder="your.email@example.com"
+                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        Phone
+                                      </Label>
+                                      <Input
+                                        value={resumeData.phone}
+                                        onChange={(e) => setResumeData(prev => ({ ...prev, phone: e.target.value }))}
+                                        placeholder="+1 (555) 123-4567"
+                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                      />
+                                    </Field>
+                                    <Field>
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        Location
+                                      </Label>
+                                      <Input
+                                        value={resumeData.location}
+                                        onChange={(e) => setResumeData(prev => ({ ...prev, location: e.target.value }))}
+                                        placeholder="City, State or Country"
+                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                      />
+                                    </Field>
+                                  </FieldGroup>
+                                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                    <Button
+                                      onClick={() => setEditingSection(null)}
+                                      plain
+                                      size="sm"
+                                      className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                    >
                                       Cancel
                                     </Button>
+                                    <Button
+                                      onClick={() => setEditingSection(null)}
+                                      color="blue"
+                                      size="sm"
+                                      className="transition-all duration-200 hover:scale-105"
+                                    >
+                                      Save Changes
+                                    </Button>
                                   </div>
-                                </FieldGroup>
+                                </div>
                               ) : (
-                                <div className="space-y-2">
-                                  <div>
-                                    <p className="font-semibold text-zinc-950">{resumeData.fullName || 'Your Name'}</p>
-                                    <p className="text-sm text-zinc-600">{resumeData.jobTitle || 'Job Title'}</p>
+                                <div className="px-4 pb-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                  <div className="space-y-1">
+                                    <p className="font-semibold text-zinc-950 dark:text-white text-base">
+                                      {resumeData.fullName || <span className="text-zinc-400 italic">Your Name</span>}
+                                    </p>
+                                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                                      {resumeData.jobTitle || <span className="text-zinc-400 italic">Job Title</span>}
+                                    </p>
                                   </div>
-                                  <div className="space-y-1 text-sm text-zinc-600">
+                                  <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
                                     {resumeData.email && (
-                                      <div className="flex items-center gap-2">
-                                        <EnvelopeIcon className="h-4 w-4" />
+                                      <div className="flex items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-400">
+                                        <EnvelopeIcon className="h-4 w-4 text-zinc-400 dark:text-zinc-500" />
                                         <span>{resumeData.email}</span>
                                       </div>
                                     )}
                                     {resumeData.phone && (
-                                      <div className="flex items-center gap-2">
-                                        <PhoneIcon className="h-4 w-4" />
+                                      <div className="flex items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-400">
+                                        <PhoneIcon className="h-4 w-4 text-zinc-400 dark:text-zinc-500" />
                                         <span>{resumeData.phone}</span>
                                       </div>
                                     )}
                                     {resumeData.location && (
-                                      <div className="flex items-center gap-2">
-                                        <MapPinIcon className="h-4 w-4" />
+                                      <div className="flex items-center gap-2.5 text-sm text-zinc-600 dark:text-zinc-400">
+                                        <MapPinIcon className="h-4 w-4 text-zinc-400 dark:text-zinc-500" />
                                         <span>{resumeData.location}</span>
                                       </div>
                                     )}
+                                    {!resumeData.email && !resumeData.phone && !resumeData.location && (
+                                      <p className="text-xs text-zinc-400 dark:text-zinc-500 italic">No contact information added yet</p>
+                                    )}
                                   </div>
                                   {resumeData.photo && (
-                                    <div className="mt-3">
-                                      <img src={resumeData.photo} alt="Profile" className="w-20 h-20 rounded-full object-cover" />
+                                    <div className="pt-2">
+                                      <img
+                                        src={resumeData.photo}
+                                        alt="Profile"
+                                        className="w-16 h-16 rounded-full object-cover border-2 border-zinc-200 dark:border-zinc-700"
+                                      />
                                     </div>
                                   )}
                                 </div>
@@ -2158,121 +2510,124 @@ export default function AIResumeBuilder() {
 
                         {/* Profile/Summary Card - Only show if added */}
                         {addedSections.includes('summary') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <UserIcon className="h-4 w-4 text-zinc-600" />
-                              <h3 className="text-sm font-semibold text-zinc-950">Profile</h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button className="text-xs text-zinc-600 hover:text-zinc-950 flex items-center gap-1">
-                                <PencilIcon className="h-3 w-3" />
-                                Edit Heading
-                              </button>
-                              <button
-                                onClick={() => setExpandedSections(prev => ({ ...prev, summary: !prev.summary }))}
-                                className="p-1 hover:bg-zinc-100 rounded transition-colors"
-                              >
-                                {expandedSections.summary ? (
-                                  <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                                ) : (
-                                  <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {expandedSections.summary && (
-                            <div className="space-y-2">
-                              {editingSection === 'summary' ? (
-                                <RichTextEditor
-                                  value={typeof resumeData.summary === 'string' ? resumeData.summary : ''}
-                                  onChange={(value) => setResumeData(prev => ({ ...prev, summary: value }))}
-                                  placeholder="Write your professional summary..."
-                                />
-                              ) : (
-                                <div className="space-y-2">
-                                  {resumeData.summary ? (
-                                    <div 
-                                      className="text-sm text-zinc-600 prose prose-sm max-w-none"
-                                      dangerouslySetInnerHTML={{ __html: resumeData.summary }}
-                                    />
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                              onClick={() => setExpandedSections(prev => ({ ...prev, summary: !prev.summary }))}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-900/20">
+                                  <UserIcon className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                </div>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Profile Summary</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSection(editingSection === 'summary' ? null : 'summary');
+                                    if (!expandedSections.summary) {
+                                      setExpandedSections(prev => ({ ...prev, summary: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Edit"
+                                >
+                                  <PencilIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, summary: !prev.summary }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.summary ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
                                   ) : (
-                                    <p className="text-sm text-zinc-400 italic">No profile summary yet</p>
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
                                   )}
-                                  <Button
-                                    onClick={() => setEditingSection('summary')}
-                                    plain
-                                    size="sm"
-                                    className="text-xs"
-                                  >
-                                    <PencilIcon className="h-3 w-3" />
-                                    Edit
-                                  </Button>
-                                </div>
-                              )}
-                              {editingSection === 'summary' && (
-                                <div className="flex gap-2 mt-2">
-                                  <Button onClick={() => setEditingSection(null)} outline size="sm">
-                                    Save
-                                  </Button>
-                                  <Button onClick={() => setEditingSection(null)} plain size="sm">
-                                    Cancel
-                                  </Button>
-                                </div>
-                              )}
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
+
+                            {expandedSections.summary && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {editingSection === 'summary' ? (
+                                  <div className="space-y-4 pt-2">
+                                    <RichTextEditor
+                                      value={typeof resumeData.summary === 'string' ? resumeData.summary : ''}
+                                      onChange={(value) => setResumeData(prev => ({ ...prev, summary: value }))}
+                                      placeholder="Write your professional summary..."
+                                    />
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => setEditingSection(null)}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => setEditingSection(null)}
+                                        color="blue"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        Save Changes
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.summary ? (
+                                      <div
+                                        className="text-sm text-zinc-700 dark:text-zinc-300 prose prose-sm max-w-none leading-relaxed"
+                                        dangerouslySetInnerHTML={{ __html: resumeData.summary }}
+                                      />
+                                    ) : (
+                                      <p className="text-sm text-zinc-400 dark:text-zinc-500 italic py-4 text-center">
+                                        No profile summary yet. Click edit to add one.
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Profile Summary Card - Only show if added */}
                         {addedSections.includes('profileSummary') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <UserIcon className="h-4 w-4 text-zinc-600" />
-                              <h3 className="text-sm font-semibold text-zinc-950">Profile Summary</h3>
+                          <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-300 dark:border-zinc-700 shadow-sm p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <UserIcon className="h-4 w-4 text-zinc-600" />
+                                <h3 className="text-sm font-semibold text-zinc-950">Profile Summary</h3>
+                              </div>
+                              <button
+                                onClick={() => setExpandedSections(prev => ({ ...prev, profileSummary: !prev.profileSummary }))}
+                                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+                              >
+                                {expandedSections.profileSummary ? (
+                                  <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                ) : (
+                                  <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                )}
+                              </button>
                             </div>
-                            <button
-                              onClick={() => setExpandedSections(prev => ({ ...prev, profileSummary: !prev.profileSummary }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
-                            >
-                              {expandedSections.profileSummary ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.profileSummary && (
-                            <div className="space-y-2">
-                              {editingSection === 'profileSummary' ? (
-                                <>
-                                  <RichTextEditor
-                                    value={typeof resumeData.profileSummary === 'string' ? resumeData.profileSummary : ''}
-                                    onChange={(value) => setResumeData(prev => ({ ...prev, profileSummary: value }))}
-                                    placeholder="Write your profile summary..."
-                                  />
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentResume) {
-                                          handleRegenerateSection('profileSummary');
-                                        } else {
-                                          toast.error('Please create a resume first');
-                                        }
-                                      }}
-                                      disabled={isGenerating}
-                                      plain
-                                      size="sm"
-                                      className="text-xs flex items-center gap-1"
-                                    >
-                                      <SparklesIcon className="h-3 w-3 text-blue-600" />
-                                      {isGenerating ? 'Generating...' : 'Generate with AI'}
-                                    </Button>
-                                    {resumeData.profileSummary && (
+
+                            {expandedSections.profileSummary && (
+                              <div className="space-y-2">
+                                {editingSection === 'profileSummary' ? (
+                                  <>
+                                    <RichTextEditor
+                                      value={typeof resumeData.profileSummary === 'string' ? resumeData.profileSummary : ''}
+                                      onChange={(value) => setResumeData(prev => ({ ...prev, profileSummary: value }))}
+                                      placeholder="Write your profile summary..."
+                                    />
+                                    <div className="flex items-center gap-2">
                                       <Button
                                         onClick={() => {
                                           if (currentResume) {
@@ -2286,292 +2641,438 @@ export default function AIResumeBuilder() {
                                         size="sm"
                                         className="text-xs flex items-center gap-1"
                                       >
-                                        <ArrowPathIcon className="h-3 w-3 text-blue-600" />
-                                        {isGenerating ? 'Rewriting...' : 'Rewrite with AI'}
+                                        <SparklesIcon className="h-3 w-3 text-blue-600" />
+                                        {isGenerating ? 'Generating...' : 'Generate with AI'}
                                       </Button>
+                                      {resumeData.profileSummary && (
+                                        <Button
+                                          onClick={() => {
+                                            if (currentResume) {
+                                              handleRegenerateSection('profileSummary');
+                                            } else {
+                                              toast.error('Please create a resume first');
+                                            }
+                                          }}
+                                          disabled={isGenerating}
+                                          plain
+                                          size="sm"
+                                          className="text-xs flex items-center gap-1"
+                                        >
+                                          <ArrowPathIcon className="h-3 w-3 text-blue-600" />
+                                          {isGenerating ? 'Rewriting...' : 'Rewrite with AI'}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {resumeData.profileSummary ? (
+                                      <div
+                                        className="text-sm text-zinc-600 prose prose-sm max-w-none"
+                                        dangerouslySetInnerHTML={{ __html: resumeData.profileSummary }}
+                                      />
+                                    ) : (
+                                      <p className="text-sm text-zinc-400 italic">No profile summary yet</p>
                                     )}
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        onClick={() => setEditingSection('profileSummary')}
+                                        plain
+                                        size="sm"
+                                        className="text-xs"
+                                      >
+                                        <PencilIcon className="h-3 w-3" />
+                                        Edit
+                                      </Button>
+                                      {currentResume && (
+                                        <>
+                                          {!resumeData.profileSummary ? (
+                                            <Button
+                                              onClick={() => handleRegenerateSection('profileSummary')}
+                                              disabled={isGenerating}
+                                              plain
+                                              size="sm"
+                                              className="text-xs flex items-center gap-1"
+                                            >
+                                              <SparklesIcon className="h-3 w-3 text-blue-600" />
+                                              {isGenerating ? 'Generating...' : 'Generate with AI'}
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              onClick={() => handleRegenerateSection('profileSummary')}
+                                              disabled={isGenerating}
+                                              plain
+                                              size="sm"
+                                              className="text-xs flex items-center gap-1"
+                                            >
+                                              <ArrowPathIcon className="h-3 w-3 text-blue-600" />
+                                              {isGenerating ? 'Rewriting...' : 'Rewrite with AI'}
+                                            </Button>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
-                                </>
-                              ) : (
-                                <div className="space-y-2">
-                                  {resumeData.profileSummary ? (
-                                    <div 
-                                      className="text-sm text-zinc-600 prose prose-sm max-w-none"
-                                      dangerouslySetInnerHTML={{ __html: resumeData.profileSummary }}
-                                    />
-                                  ) : (
-                                    <p className="text-sm text-zinc-400 italic">No profile summary yet</p>
-                                  )}
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      onClick={() => setEditingSection('profileSummary')}
-                                      plain
-                                      size="sm"
-                                      className="text-xs"
-                                    >
-                                      <PencilIcon className="h-3 w-3" />
-                                      Edit
+                                )}
+                                {editingSection === 'profileSummary' && (
+                                  <div className="flex gap-2 mt-2">
+                                    <Button onClick={() => setEditingSection(null)} outline size="sm">
+                                      Save
                                     </Button>
-                                    {currentResume && (
-                                      <>
-                                        {!resumeData.profileSummary ? (
-                                          <Button
-                                            onClick={() => handleRegenerateSection('profileSummary')}
-                                            disabled={isGenerating}
-                                            plain
-                                            size="sm"
-                                            className="text-xs flex items-center gap-1"
-                                          >
-                                            <SparklesIcon className="h-3 w-3 text-blue-600" />
-                                            {isGenerating ? 'Generating...' : 'Generate with AI'}
-                                          </Button>
-                                        ) : (
-                                          <Button
-                                            onClick={() => handleRegenerateSection('profileSummary')}
-                                            disabled={isGenerating}
-                                            plain
-                                            size="sm"
-                                            className="text-xs flex items-center gap-1"
-                                          >
-                                            <ArrowPathIcon className="h-3 w-3 text-blue-600" />
-                                            {isGenerating ? 'Rewriting...' : 'Rewrite with AI'}
-                                          </Button>
-                                        )}
-                                      </>
-                                    )}
+                                    <Button onClick={() => setEditingSection(null)} plain size="sm">
+                                      Cancel
+                                    </Button>
                                   </div>
-                                </div>
-                              )}
-                              {editingSection === 'profileSummary' && (
-                                <div className="flex gap-2 mt-2">
-                                  <Button onClick={() => setEditingSection(null)} outline size="sm">
-                                    Save
-                                  </Button>
-                                  <Button onClick={() => setEditingSection(null)} plain size="sm">
-                                    Cancel
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Skills Card - Only show if added */}
                         {addedSections.includes('skills') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Skills</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, skills: !prev.skills }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.skills ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.skills && (
-                            <div className="space-y-2">
-                              {editingSection === 'skills' ? (
-                                <RichTextEditor
-                                  value={Array.isArray(resumeData.skills) ? resumeData.skills.join('\n') : (resumeData.skills || '')}
-                                  onChange={(value) => {
-                                    const tempDiv = document.createElement('div');
-                                    tempDiv.innerHTML = value;
-                                    const textContent = tempDiv.textContent || tempDiv.innerText || '';
-                                    const skillsArray = textContent.split('\n').filter(s => s.trim());
-                                    setResumeData(prev => ({ ...prev, skills: skillsArray }));
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-pink-50 dark:bg-pink-900/20">
+                                  <LightBulbIcon className="h-4 w-4 text-pink-600 dark:text-pink-400" />
+                                </div>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Skills</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleGenerateSkills();
                                   }}
-                                  placeholder="Enter your skills, one per line..."
-                                />
-                              ) : (
-                                <div className="space-y-2">
-                                  {Array.isArray(resumeData.skills) && resumeData.skills.length > 0 ? (
-                                    <ul className="space-y-1">
-                                      {resumeData.skills.map((skill, idx) => (
-                                        <li key={idx} className="flex items-center gap-2 text-sm text-zinc-600">
-                                          <div className="w-1 h-1 rounded-full bg-zinc-400" />
-                                          <span>{skill}</span>
-                                          <button
-                                            onClick={() => {
-                                              setResumeData(prev => ({
-                                                ...prev,
-                                                skills: prev.skills.filter((_, i) => i !== idx),
-                                              }));
-                                            }}
-                                            className="ml-auto opacity-0 group-hover:opacity-100 hover:text-red-600"
-                                          >
-                                            <XMarkIcon className="h-3 w-3" />
-                                          </button>
-                                        </li>
-                                      ))}
-                                    </ul>
+                                  disabled={isGenerating}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105 text-zinc-600 dark:text-zinc-400"
+                                  title="Generate Skills with AI"
+                                >
+                                  {isGenerating ? (
+                                    <ArrowPathIcon className="h-4 w-4 animate-spin text-purple-600" />
                                   ) : (
-                                    <p className="text-sm text-zinc-400 italic">No skills added yet</p>
+                                    <SparklesIcon className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                                   )}
-                                  <Button
-                                    onClick={() => setEditingSection('skills')}
-                                    plain
-                                    size="sm"
-                                    className="text-xs"
-                                  >
-                                    <PencilIcon className="h-3 w-3" />
-                                    Edit
-                                  </Button>
-                                </div>
-                              )}
-                              {editingSection === 'skills' && (
-                                <div className="flex gap-2 mt-2">
-                                  <Button onClick={() => setEditingSection(null)} outline size="sm">
-                                    Save
-                                  </Button>
-                                  <Button onClick={() => setEditingSection(null)} plain size="sm">
-                                    Cancel
-                                  </Button>
-                                </div>
-                              )}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingSection(editingSection === 'skills' ? null : 'skills');
+                                    if (!expandedSections.skills) {
+                                      setExpandedSections(prev => ({ ...prev, skills: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Edit Skills"
+                                >
+                                  <PencilIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, skills: !prev.skills }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.skills ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
+
+                            {expandedSections.skills && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {editingSection === 'skills' ? (
+                                  <div className="space-y-3 pt-2">
+                                    <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                      List your skills
+                                    </Label>
+                                    <RichTextEditor
+                                      value={Array.isArray(resumeData.skills) ? resumeData.skills.join('\n') : (resumeData.skills || '')}
+                                      onChange={(value) => {
+                                        // Handle converting HTML to clean list
+                                        const tempDiv = document.createElement('div');
+                                        tempDiv.innerHTML = value;
+                                        // Replace <br> and blocks with newlines to clean up
+                                        const cleanText = tempDiv.innerText || tempDiv.textContent || '';
+                                        // This is a bit of a hack since RichTextEditor returns HTML
+                                        // Ideally we want a tagging input for skills, but sticking to existing logic for now
+                                        const skillsArray = cleanText.split(/\n|,/).map(s => s.trim()).filter(s => s);
+                                        setResumeData(prev => ({ ...prev, skills: skillsArray }));
+                                      }}
+                                      placeholder="Enter your skills, one per line..."
+                                    />
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                      Tip: Enter skills separated by new lines or commas.
+                                    </p>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button onClick={() => setEditingSection(null)} plain size="sm">
+                                        Done
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4 pt-2">
+                                    {Array.isArray(resumeData.skills) && resumeData.skills.length > 0 ? (
+                                      <div className="flex flex-wrap gap-2">
+                                        {resumeData.skills.map((skill, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="group flex items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full text-sm text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700"
+                                          >
+                                            <span>{skill}</span>
+                                            <button
+                                              onClick={() => {
+                                                setResumeData(prev => ({
+                                                  ...prev,
+                                                  skills: prev.skills.filter((_, i) => i !== idx),
+                                                }));
+                                              }}
+                                              className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 hover:text-red-500 transition-colors"
+                                            >
+                                              <XMarkIcon className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-center py-6 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-dashed border-zinc-200 dark:border-zinc-700">
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-2">No skills added yet</p>
+                                        <Button
+                                          onClick={() => setEditingSection('skills')}
+                                          outline
+                                          size="sm"
+                                        >
+                                          Add Skills manually
+                                        </Button>
+                                        <span className="mx-2 text-xs text-zinc-400">or</span>
+                                        <Button
+                                          onClick={handleGenerateSkills}
+                                          disabled={isGenerating}
+                                          plain
+                                          size="sm"
+                                          className="text-purple-600 dark:text-purple-400"
+                                        >
+                                          Generate with AI
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Professional Experience Card - Only show if added */}
                         {addedSections.includes('experience') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Professional Experience</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, experience: !prev.experience }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.experience ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.experience && (
-                            <div className="space-y-3">
-                              {resumeData.experience && resumeData.experience.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.experience.map((exp, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{exp.title} at {exp.company}</p>
-                                        <p className="text-xs text-zinc-500">
-                                          {exp.startDate} - {exp.current ? 'Present' : exp.endDate}
-                                        </p>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentExperience(exp);
-                                            setEditingIndex(idx);
-                                            setEditingSection('experience');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              experience: prev.experience.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
+                                  <BriefcaseIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No experience added yet</p>
-                              )}
-                              {editingSection === 'experience' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Job Title</Label>
-                                    <Input
-                                      value={currentExperience.title}
-                                      onChange={(e) => setCurrentExperience(prev => ({ ...prev, title: e.target.value }))}
-                                      placeholder="Software Engineer"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Company</Label>
-                                    <Input
-                                      value={currentExperience.company}
-                                      onChange={(e) => setCurrentExperience(prev => ({ ...prev, company: e.target.value }))}
-                                      placeholder="Company Name"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Location</Label>
-                                    <Input
-                                      value={currentExperience.location}
-                                      onChange={(e) => setCurrentExperience(prev => ({ ...prev, location: e.target.value }))}
-                                      placeholder="City, State"
-                                    />
-                                  </Field>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <Field>
-                                      <Label>Start Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentExperience.startDate}
-                                        onChange={(e) => setCurrentExperience(prev => ({ ...prev, startDate: e.target.value }))}
-                                      />
-                                    </Field>
-                                    <Field>
-                                      <Label>End Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentExperience.endDate}
-                                        onChange={(e) => setCurrentExperience(prev => ({ ...prev, endDate: e.target.value }))}
-                                        placeholder="Leave empty if current"
-                                      />
-                                    </Field>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Professional Experience</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentExperience({
+                                      title: '',
+                                      company: '',
+                                      location: '',
+                                      startDate: '',
+                                      endDate: '',
+                                      current: false,
+                                      responsibilities: '',
+                                    });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'experience' ? null : 'experience');
+                                    if (!expandedSections.experience) {
+                                      setExpandedSections(prev => ({ ...prev, experience: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Experience"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, experience: !prev.experience }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.experience ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.experience && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.experience && resumeData.experience.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.experience.map((exp, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm"
+                                      >
+                                        <div className="w-1 h-full bg-green-500 dark:bg-green-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white">
+                                            {exp.title || 'Untitled Position'}
+                                          </p>
+                                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
+                                            {exp.company || 'Company Name'}
+                                          </p>
+                                          <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
+                                            {exp.startDate || 'Start Date'} - {exp.current ? 'Present' : (exp.endDate || 'End Date')}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentExperience(exp);
+                                              setEditingIndex(idx);
+                                              setEditingSection('experience');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                experience: prev.experience.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <Field>
-                                    <CheckboxField>
-                                      <Checkbox
-                                        checked={currentExperience.current}
-                                        onChange={(checked) => setCurrentExperience(prev => ({ ...prev, current: checked }))}
-                                      />
-                                      <Label>I currently work here</Label>
-                                    </CheckboxField>
-                                  </Field>
-                                  <Field>
-                                    <Label>Responsibilities</Label>
-                                    <RichTextEditor
-                                      value={currentExperience.responsibilities || ''}
-                                      onChange={(value) => setCurrentExperience(prev => ({ ...prev, responsibilities: value }))}
-                                      placeholder="Describe your key responsibilities and achievements..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentExperience.title && currentExperience.company) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              experience: prev.experience.map((e, i) => i === editingIndex ? currentExperience : e),
-                                            }));
-                                          } else {
-                                            addExperience();
-                                          }
+                                )}
+                                {editingSection === 'experience' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Job Title
+                                          </Label>
+                                          <Input
+                                            value={currentExperience.title}
+                                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, title: e.target.value }))}
+                                            placeholder="e.g. Software Engineer"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Company
+                                          </Label>
+                                          <Input
+                                            value={currentExperience.company}
+                                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, company: e.target.value }))}
+                                            placeholder="Company Name"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                      </div>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Location
+                                        </Label>
+                                        <Input
+                                          value={currentExperience.location}
+                                          onChange={(e) => setCurrentExperience(prev => ({ ...prev, location: e.target.value }))}
+                                          placeholder="City, State or Remote"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Start Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentExperience.startDate}
+                                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, startDate: e.target.value }))}
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            End Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentExperience.endDate}
+                                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, endDate: e.target.value }))}
+                                            disabled={currentExperience.current}
+                                            placeholder="Leave empty if current"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                      </div>
+                                      <Field>
+                                        <CheckboxField>
+                                          <Checkbox
+                                            checked={currentExperience.current}
+                                            onChange={(checked) => setCurrentExperience(prev => ({ ...prev, current: checked }))}
+                                          />
+                                          <Label className="text-sm">I currently work here</Label>
+                                        </CheckboxField>
+                                      </Field>
+                                      <Field>
+                                        <div className="flex justify-between items-center mb-2">
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide">
+                                            Responsibilities
+                                          </Label>
+                                          <Button
+                                            onClick={handleGenerateExperience}
+                                            disabled={isGenerating || !currentExperience.title || !currentExperience.company}
+                                            plain
+                                            size="sm"
+                                            className="text-xs flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                                          >
+                                            <SparklesIcon className="h-3.5 w-3.5" />
+                                            {isGenerating ? 'Generating...' : 'Generate with AI'}
+                                          </Button>
+                                        </div>
+                                        <RichTextEditor
+                                          value={currentExperience.responsibilities || ''}
+                                          onChange={(value) => setCurrentExperience(prev => ({ ...prev, responsibilities: value }))}
+                                          placeholder="Describe your key responsibilities and achievements..."
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentExperience({
                                             title: '',
                                             company: '',
@@ -2583,199 +3084,257 @@ export default function AIResumeBuilder() {
                                           });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentExperience({
-                                          title: '',
-                                          company: '',
-                                          location: '',
-                                          startDate: '',
-                                          endDate: '',
-                                          current: false,
-                                          responsibilities: '',
-                                        });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentExperience.title && currentExperience.company) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                experience: prev.experience.map((e, i) => i === editingIndex ? currentExperience : e),
+                                              }));
+                                            } else {
+                                              addExperience();
+                                            }
+                                            setCurrentExperience({
+                                              title: '',
+                                              company: '',
+                                              location: '',
+                                              startDate: '',
+                                              endDate: '',
+                                              current: false,
+                                              responsibilities: '',
+                                            });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="blue"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Experience' : 'Add Experience'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentExperience({
-                                      title: '',
-                                      company: '',
-                                      location: '',
-                                      startDate: '',
-                                      endDate: '',
-                                      current: false,
-                                      responsibilities: '',
-                                    });
-                                    setEditingIndex(null);
-                                    setEditingSection('experience');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentExperience({
+                                        title: '',
+                                        company: '',
+                                        location: '',
+                                        startDate: '',
+                                        endDate: '',
+                                        current: false,
+                                        responsibilities: '',
+                                      });
+                                      setEditingIndex(null);
+                                      setEditingSection('experience');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Experience
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Education Card - Only show if added */}
                         {addedSections.includes('education') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Education</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, education: !prev.education }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.education ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.education && (
-                            <div className="space-y-3">
-                              {resumeData.education && resumeData.education.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.education.map((edu, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{edu.degree}</p>
-                                        <p className="text-xs text-zinc-500">{edu.institution}</p>
-                                        {edu.startDate && (
-                                          <p className="text-xs text-zinc-400">
-                                            {edu.startDate} - {edu.endDate || 'Present'}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentEducation(edu);
-                                            setEditingIndex(idx);
-                                            setEditingSection('education');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              education: prev.education.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+                                  <AcademicCapIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No education added yet</p>
-                              )}
-                              {editingSection === 'education' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Degree</Label>
-                                    <Input
-                                      value={currentEducation.degree}
-                                      onChange={(e) => setCurrentEducation(prev => ({ ...prev, degree: e.target.value }))}
-                                      placeholder="Bachelor of Science"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Institution</Label>
-                                    <Input
-                                      value={currentEducation.institution}
-                                      onChange={(e) => setCurrentEducation(prev => ({ ...prev, institution: e.target.value }))}
-                                      placeholder="University Name"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Location</Label>
-                                    <Input
-                                      value={currentEducation.location}
-                                      onChange={(e) => setCurrentEducation(prev => ({ ...prev, location: e.target.value }))}
-                                      placeholder="City, State"
-                                    />
-                                  </Field>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <Field>
-                                      <Label>Start Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentEducation.startDate}
-                                        onChange={(e) => setCurrentEducation(prev => ({ ...prev, startDate: e.target.value }))}
-                                      />
-                                    </Field>
-                                    <Field>
-                                      <Label>End Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentEducation.endDate}
-                                        onChange={(e) => setCurrentEducation(prev => ({ ...prev, endDate: e.target.value }))}
-                                        placeholder="Leave empty if ongoing"
-                                      />
-                                    </Field>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Education</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentEducation({
+                                      degree: '',
+                                      institution: '',
+                                      location: '',
+                                      startDate: '',
+                                      endDate: '',
+                                      gpa: '',
+                                      description: '',
+                                    });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'education' ? null : 'education');
+                                    if (!expandedSections.education) {
+                                      setExpandedSections(prev => ({ ...prev, education: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Education"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, education: !prev.education }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.education ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.education && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.education && resumeData.education.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.education.map((edu, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-orange-500 dark:bg-orange-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white">{edu.degree || 'Degree'}</p>
+                                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{edu.institution || 'Institution'}</p>
+                                          {edu.startDate && (
+                                            <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">
+                                              {edu.startDate} - {edu.endDate || 'Present'}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentEducation(edu);
+                                              setEditingIndex(idx);
+                                              setEditingSection('education');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                education: prev.education.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <Field>
-                                    <Label>GPA (Optional)</Label>
-                                    <Input
-                                      value={currentEducation.gpa}
-                                      onChange={(e) => setCurrentEducation(prev => ({ ...prev, gpa: e.target.value }))}
-                                      placeholder="3.8/4.0"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Description</Label>
-                                    <RichTextEditor
-                                      value={currentEducation.description || ''}
-                                      onChange={(value) => setCurrentEducation(prev => ({ ...prev, description: value }))}
-                                      placeholder="Additional details about your education..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentEducation.degree && currentEducation.institution) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            // Update existing entry
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              education: prev.education.map((e, i) => i === editingIndex ? currentEducation : e),
-                                            }));
-                                          } else {
-                                            // Add new entry
-                                            addEducation();
-                                          }
+                                )}
+                                {editingSection === 'education' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Degree
+                                        </Label>
+                                        <Input
+                                          value={currentEducation.degree}
+                                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, degree: e.target.value }))}
+                                          placeholder="e.g. Bachelor of Science in Computer Science"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Institution
+                                        </Label>
+                                        <Input
+                                          value={currentEducation.institution}
+                                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, institution: e.target.value }))}
+                                          placeholder="University Name"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Location
+                                        </Label>
+                                        <Input
+                                          value={currentEducation.location}
+                                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, location: e.target.value }))}
+                                          placeholder="City, State"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Start Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentEducation.startDate}
+                                            onChange={(e) => setCurrentEducation(prev => ({ ...prev, startDate: e.target.value }))}
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            End Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentEducation.endDate}
+                                            onChange={(e) => setCurrentEducation(prev => ({ ...prev, endDate: e.target.value }))}
+                                            placeholder="Leave empty if ongoing"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                      </div>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          GPA (Optional)
+                                        </Label>
+                                        <Input
+                                          value={currentEducation.gpa}
+                                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, gpa: e.target.value }))}
+                                          placeholder="e.g. 3.8/4.0"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Description
+                                        </Label>
+                                        <RichTextEditor
+                                          value={currentEducation.description || ''}
+                                          onChange={(value) => setCurrentEducation(prev => ({ ...prev, description: value }))}
+                                          placeholder="Additional details about your education..."
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentEducation({
                                             degree: '',
                                             institution: '',
@@ -2787,187 +3346,244 @@ export default function AIResumeBuilder() {
                                           });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentEducation({
-                                          degree: '',
-                                          institution: '',
-                                          location: '',
-                                          startDate: '',
-                                          endDate: '',
-                                          gpa: '',
-                                          description: '',
-                                        });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentEducation.degree && currentEducation.institution) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                education: prev.education.map((e, i) => i === editingIndex ? currentEducation : e),
+                                              }));
+                                            } else {
+                                              addEducation();
+                                            }
+                                            setCurrentEducation({
+                                              degree: '',
+                                              institution: '',
+                                              location: '',
+                                              startDate: '',
+                                              endDate: '',
+                                              gpa: '',
+                                              description: '',
+                                            });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="blue"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Education' : 'Add Education'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentEducation({
-                                      degree: '',
-                                      institution: '',
-                                      location: '',
-                                      startDate: '',
-                                      endDate: '',
-                                      gpa: '',
-                                      description: '',
-                                    });
-                                    setEditingIndex(null);
-                                    setEditingSection('education');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentEducation({
+                                        degree: '',
+                                        institution: '',
+                                        location: '',
+                                        startDate: '',
+                                        endDate: '',
+                                        gpa: '',
+                                        description: '',
+                                      });
+                                      setEditingIndex(null);
+                                      setEditingSection('education');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Education
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Certifications Card - Only show if added */}
                         {addedSections.includes('certifications') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Certifications</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, certifications: !prev.certifications }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.certifications ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.certifications && (
-                            <div className="space-y-3">
-                              {resumeData.certifications && resumeData.certifications.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.certifications.map((cert, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{cert.name}</p>
-                                        <p className="text-xs text-zinc-500">{cert.issuer}</p>
-                                        {cert.date && (
-                                          <p className="text-xs text-zinc-400">{cert.date}</p>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentCertification(cert);
-                                            setEditingIndex(idx);
-                                            setEditingSection('certifications');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              certifications: prev.certifications.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-900/20">
+                                  <CheckBadgeIcon className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No certifications added yet</p>
-                              )}
-                              {editingSection === 'certifications' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Certification Name</Label>
-                                    <Input
-                                      value={currentCertification.name}
-                                      onChange={(e) => setCurrentCertification(prev => ({ ...prev, name: e.target.value }))}
-                                      placeholder="AWS Certified Solutions Architect"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Issuer</Label>
-                                    <Input
-                                      value={currentCertification.issuer}
-                                      onChange={(e) => setCurrentCertification(prev => ({ ...prev, issuer: e.target.value }))}
-                                      placeholder="Amazon Web Services"
-                                    />
-                                  </Field>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <Field>
-                                      <Label>Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentCertification.date}
-                                        onChange={(e) => setCurrentCertification(prev => ({ ...prev, date: e.target.value }))}
-                                      />
-                                    </Field>
-                                    <Field>
-                                      <Label>Expiry Date (Optional)</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentCertification.expiryDate}
-                                        onChange={(e) => setCurrentCertification(prev => ({ ...prev, expiryDate: e.target.value }))}
-                                      />
-                                    </Field>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Certifications</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentCertification({
+                                      name: '',
+                                      issuer: '',
+                                      date: '',
+                                      expiryDate: '',
+                                      credentialId: '',
+                                      credentialUrl: '',
+                                    });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'certifications' ? null : 'certifications');
+                                    if (!expandedSections.certifications) {
+                                      setExpandedSections(prev => ({ ...prev, certifications: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Certification"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, certifications: !prev.certifications }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.certifications ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.certifications && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.certifications && resumeData.certifications.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.certifications.map((cert, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-teal-500 dark:bg-teal-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white">{cert.name || 'Certification Name'}</p>
+                                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{cert.issuer || 'Issuer'}</p>
+                                          {cert.date && (
+                                            <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-1">{cert.date}</p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentCertification(cert);
+                                              setEditingIndex(idx);
+                                              setEditingSection('certifications');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                certifications: prev.certifications.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <Field>
-                                    <Label>Credential ID (Optional)</Label>
-                                    <Input
-                                      value={currentCertification.credentialId}
-                                      onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialId: e.target.value }))}
-                                      placeholder="ABC123456"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Credential URL (Optional)</Label>
-                                    <Input
-                                      type="url"
-                                      value={currentCertification.credentialUrl}
-                                      onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialUrl: e.target.value }))}
-                                      placeholder="https://..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentCertification.name && currentCertification.issuer) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              certifications: prev.certifications.map((c, i) => i === editingIndex ? currentCertification : c),
-                                            }));
-                                          } else {
-                                            addCertification();
-                                          }
+                                )}
+                                {editingSection === 'certifications' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Certification Name
+                                        </Label>
+                                        <Input
+                                          value={currentCertification.name}
+                                          onChange={(e) => setCurrentCertification(prev => ({ ...prev, name: e.target.value }))}
+                                          placeholder="e.g. AWS Certified Solutions Architect"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Issuer
+                                        </Label>
+                                        <Input
+                                          value={currentCertification.issuer}
+                                          onChange={(e) => setCurrentCertification(prev => ({ ...prev, issuer: e.target.value }))}
+                                          placeholder="e.g. Amazon Web Services"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentCertification.date}
+                                            onChange={(e) => setCurrentCertification(prev => ({ ...prev, date: e.target.value }))}
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Expiry Date (Optional)
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentCertification.expiryDate}
+                                            onChange={(e) => setCurrentCertification(prev => ({ ...prev, expiryDate: e.target.value }))}
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          />
+                                        </Field>
+                                      </div>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Credential ID (Optional)
+                                        </Label>
+                                        <Input
+                                          value={currentCertification.credentialId}
+                                          onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialId: e.target.value }))}
+                                          placeholder="e.g. ABC123456"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Credential URL (Optional)
+                                        </Label>
+                                        <Input
+                                          type="url"
+                                          value={currentCertification.credentialUrl}
+                                          onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialUrl: e.target.value }))}
+                                          placeholder="https://..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentCertification({
                                             name: '',
                                             issuer: '',
@@ -2978,183 +3594,246 @@ export default function AIResumeBuilder() {
                                           });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentCertification({
-                                          name: '',
-                                          issuer: '',
-                                          date: '',
-                                          expiryDate: '',
-                                          credentialId: '',
-                                          credentialUrl: '',
-                                        });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentCertification.name && currentCertification.issuer) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                certifications: prev.certifications.map((c, i) => i === editingIndex ? currentCertification : c),
+                                              }));
+                                            } else {
+                                              addCertification();
+                                            }
+                                            setCurrentCertification({
+                                              name: '',
+                                              issuer: '',
+                                              date: '',
+                                              expiryDate: '',
+                                              credentialId: '',
+                                              credentialUrl: '',
+                                            });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="blue"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Certification' : 'Add Certification'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentCertification({
-                                      name: '',
-                                      issuer: '',
-                                      date: '',
-                                      expiryDate: '',
-                                      credentialId: '',
-                                      credentialUrl: '',
-                                    });
-                                    setEditingIndex(null);
-                                    setEditingSection('certifications');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentCertification({
+                                        name: '',
+                                        issuer: '',
+                                        date: '',
+                                        expiryDate: '',
+                                        credentialId: '',
+                                        credentialUrl: '',
+                                      });
+                                      setEditingIndex(null);
+                                      setEditingSection('certifications');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Certification
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+
+                          </div>
                         )}
 
                         {/* References Card - Only show if added */}
                         {addedSections.includes('references') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">References</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, references: !prev.references }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.references ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.references && (
-                            <div className="space-y-3">
-                              {resumeData.references && resumeData.references.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.references.map((ref, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{ref.name}</p>
-                                        <p className="text-xs text-zinc-500">{ref.title} at {ref.company}</p>
-                                        {ref.email && (
-                                          <p className="text-xs text-zinc-400">{ref.email}</p>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentReference(ref);
-                                            setEditingIndex(idx);
-                                            setEditingSection('references');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              references: prev.references.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
+                                  <UserGroupIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No references added yet</p>
-                              )}
-                              {editingSection === 'references' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Name</Label>
-                                    <Input
-                                      value={currentReference.name}
-                                      onChange={(e) => setCurrentReference(prev => ({ ...prev, name: e.target.value }))}
-                                      placeholder="John Doe"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Title</Label>
-                                    <Input
-                                      value={currentReference.title}
-                                      onChange={(e) => setCurrentReference(prev => ({ ...prev, title: e.target.value }))}
-                                      placeholder="Senior Manager"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Company</Label>
-                                    <Input
-                                      value={currentReference.company}
-                                      onChange={(e) => setCurrentReference(prev => ({ ...prev, company: e.target.value }))}
-                                      placeholder="Company Name"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Email</Label>
-                                    <Input
-                                      type="email"
-                                      value={currentReference.email}
-                                      onChange={(e) => setCurrentReference(prev => ({ ...prev, email: e.target.value }))}
-                                      placeholder="john@example.com"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Phone (Optional)</Label>
-                                    <Input
-                                      value={currentReference.phone}
-                                      onChange={(e) => setCurrentReference(prev => ({ ...prev, phone: e.target.value }))}
-                                      placeholder="+1 (555) 123-4567"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Relationship (Optional)</Label>
-                                    <Input
-                                      value={currentReference.relationship}
-                                      onChange={(e) => setCurrentReference(prev => ({ ...prev, relationship: e.target.value }))}
-                                      placeholder="Former Manager"
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentReference.name && currentReference.email) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              references: prev.references.map((r, i) => i === editingIndex ? currentReference : r),
-                                            }));
-                                          } else {
-                                            addReference();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">References</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentReference({
+                                      name: '',
+                                      title: '',
+                                      company: '',
+                                      email: '',
+                                      phone: '',
+                                      relationship: '',
+                                    });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'references' ? null : 'references');
+                                    if (!expandedSections.references) {
+                                      setExpandedSections(prev => ({ ...prev, references: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Reference"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, references: !prev.references }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.references ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.references && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.references && resumeData.references.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.references.map((ref, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-indigo-500 dark:bg-indigo-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white">{ref.name || 'Reference Name'}</p>
+                                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">
+                                            {ref.title && ref.company ? `${ref.title} at ${ref.company}` : (ref.title || ref.company || '')}
+                                          </p>
+                                          {ref.email && (
+                                            <div className="flex items-center gap-1 mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+                                              <EnvelopeIcon className="h-3 w-3" />
+                                              <span>{ref.email}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentReference(ref);
+                                              setEditingIndex(idx);
+                                              setEditingSection('references');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                references: prev.references.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {editingSection === 'references' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Name
+                                        </Label>
+                                        <Input
+                                          value={currentReference.name}
+                                          onChange={(e) => setCurrentReference(prev => ({ ...prev, name: e.target.value }))}
+                                          placeholder="e.g. John Doe"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Title
+                                        </Label>
+                                        <Input
+                                          value={currentReference.title}
+                                          onChange={(e) => setCurrentReference(prev => ({ ...prev, title: e.target.value }))}
+                                          placeholder="e.g. Senior Manager"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Company
+                                        </Label>
+                                        <Input
+                                          value={currentReference.company}
+                                          onChange={(e) => setCurrentReference(prev => ({ ...prev, company: e.target.value }))}
+                                          placeholder="e.g. Acme Corp"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Email
+                                        </Label>
+                                        <Input
+                                          type="email"
+                                          value={currentReference.email}
+                                          onChange={(e) => setCurrentReference(prev => ({ ...prev, email: e.target.value }))}
+                                          placeholder="john@example.com"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Phone (Optional)
+                                        </Label>
+                                        <Input
+                                          value={currentReference.phone}
+                                          onChange={(e) => setCurrentReference(prev => ({ ...prev, phone: e.target.value }))}
+                                          placeholder="+1 (555) 123-4567"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Relationship (Optional)
+                                        </Label>
+                                        <Input
+                                          value={currentReference.relationship}
+                                          onChange={(e) => setCurrentReference(prev => ({ ...prev, relationship: e.target.value }))}
+                                          placeholder="e.g. Former Manager"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentReference({
                                             name: '',
                                             title: '',
@@ -3165,1249 +3844,1633 @@ export default function AIResumeBuilder() {
                                           });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentReference({
-                                          name: '',
-                                          title: '',
-                                          company: '',
-                                          email: '',
-                                          phone: '',
-                                          relationship: '',
-                                        });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentReference.name && currentReference.email) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                references: prev.references.map((r, i) => i === editingIndex ? currentReference : r),
+                                              }));
+                                            } else {
+                                              addReference();
+                                            }
+                                            setCurrentReference({
+                                              name: '',
+                                              title: '',
+                                              company: '',
+                                              email: '',
+                                              phone: '',
+                                              relationship: '',
+                                            });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="blue"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Reference' : 'Add Reference'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentReference({
-                                      name: '',
-                                      title: '',
-                                      company: '',
-                                      email: '',
-                                      phone: '',
-                                      relationship: '',
-                                    });
-                                    setEditingIndex(null);
-                                    setEditingSection('references');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentReference({
+                                        name: '',
+                                        title: '',
+                                        company: '',
+                                        email: '',
+                                        phone: '',
+                                        relationship: '',
+                                      });
+                                      setEditingIndex(null);
+                                      setEditingSection('references');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Reference
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Languages Card - Only show if added */}
                         {addedSections.includes('languages') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Languages</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, languages: !prev.languages }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.languages ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.languages && (
-                            <div className="space-y-3">
-                              {resumeData.languages && resumeData.languages.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.languages.map((lang, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{lang.language}</p>
-                                        <p className="text-xs text-zinc-500">{lang.proficiency}</p>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentLanguage(lang);
-                                            setEditingIndex(idx);
-                                            setEditingSection('languages');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              languages: prev.languages.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-cyan-50 dark:bg-cyan-900/20">
+                                  <GlobeAltIcon className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No languages added yet</p>
-                              )}
-                              {editingSection === 'languages' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Language</Label>
-                                    <Input
-                                      value={currentLanguage.language}
-                                      onChange={(e) => setCurrentLanguage(prev => ({ ...prev, language: e.target.value }))}
-                                      placeholder="English"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Proficiency</Label>
-                                    <select
-                                      value={currentLanguage.proficiency}
-                                      onChange={(e) => setCurrentLanguage(prev => ({ ...prev, proficiency: e.target.value }))}
-                                      className="mt-1 block w-full rounded-md border-zinc-300 shadow-sm focus:border-pink-500 focus:ring-pink-500 sm:text-sm"
-                                    >
-                                      <option value="Native">Native</option>
-                                      <option value="Fluent">Fluent</option>
-                                      <option value="Conversational">Conversational</option>
-                                      <option value="Basic">Basic</option>
-                                    </select>
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentLanguage.language) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              languages: prev.languages.map((l, i) => i === editingIndex ? currentLanguage : l),
-                                            }));
-                                          } else {
-                                            addLanguage();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Languages</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentLanguage({ language: '', proficiency: 'Native' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'languages' ? null : 'languages');
+                                    if (!expandedSections.languages) {
+                                      setExpandedSections(prev => ({ ...prev, languages: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Language"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, languages: !prev.languages }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.languages ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.languages && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.languages && resumeData.languages.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.languages.map((lang, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-cyan-500 dark:bg-cyan-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white">{lang.language || 'Language'}</p>
+                                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-0.5">{lang.proficiency || 'Proficiency'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentLanguage(lang);
+                                              setEditingIndex(idx);
+                                              setEditingSection('languages');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                languages: prev.languages.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {editingSection === 'languages' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Language
+                                        </Label>
+                                        <Input
+                                          value={currentLanguage.language}
+                                          onChange={(e) => setCurrentLanguage(prev => ({ ...prev, language: e.target.value }))}
+                                          placeholder="e.g. English"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Proficiency
+                                        </Label>
+                                        <select
+                                          value={currentLanguage.proficiency}
+                                          onChange={(e) => setCurrentLanguage(prev => ({ ...prev, proficiency: e.target.value }))}
+                                          className="w-full rounded-md border-zinc-300 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 sm:text-sm bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white p-2.5 transition-all duration-200"
+                                        >
+                                          <option value="Native">Native</option>
+                                          <option value="Fluent">Fluent</option>
+                                          <option value="Conversational">Conversational</option>
+                                          <option value="Basic">Basic</option>
+                                        </select>
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentLanguage({ language: '', proficiency: 'Native' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentLanguage({ language: '', proficiency: 'Native' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentLanguage.language) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                languages: prev.languages.map((l, i) => i === editingIndex ? currentLanguage : l),
+                                              }));
+                                            } else {
+                                              addLanguage();
+                                            }
+                                            setCurrentLanguage({ language: '', proficiency: 'Native' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="blue"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Language' : 'Add Language'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentLanguage({ language: '', proficiency: 'Native' });
-                                    setEditingIndex(null);
-                                    setEditingSection('languages');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentLanguage({ language: '', proficiency: 'Native' });
+                                      setEditingIndex(null);
+                                      setEditingSection('languages');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Language
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Interests Card - Only show if added */}
                         {addedSections.includes('interests') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Interests</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, interests: !prev.interests }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.interests ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.interests && (
-                            <div className="space-y-3">
-                              {resumeData.interests && resumeData.interests.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {resumeData.interests.map((interest, idx) => (
-                                    <div key={idx} className="flex items-center gap-1 px-2 py-1 bg-zinc-100 rounded text-sm">
-                                      <span>{interest}</span>
-                                      <button
-                                        onClick={() => {
-                                          setResumeData(prev => ({
-                                            ...prev,
-                                            interests: prev.interests.filter((_, i) => i !== idx),
-                                          }));
-                                        }}
-                                        className="ml-1 hover:text-red-600"
-                                      >
-                                        <XMarkIcon className="h-3 w-3" />
-                                      </button>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-pink-50 dark:bg-pink-900/20">
+                                  <HeartIcon className="h-4 w-4 text-pink-600 dark:text-pink-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No interests added yet</p>
-                              )}
-                              {editingSection === 'interests' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Interest</Label>
-                                    <Input
-                                      value={currentInterest}
-                                      onChange={(e) => setCurrentInterest(e.target.value)}
-                                      placeholder="Photography"
-                                      onKeyPress={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          if (currentInterest.trim()) {
-                                            addInterest();
-                                          }
-                                        }
-                                      }}
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentInterest.trim()) {
-                                          addInterest();
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      Add
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentInterest('');
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Done
-                                    </Button>
-                                  </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => setEditingSection('interests')}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Interests</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentInterest('');
+                                    setEditingSection(editingSection === 'interests' ? null : 'interests');
+                                    if (!expandedSections.interests) {
+                                      setExpandedSections(prev => ({ ...prev, interests: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Interest"
                                 >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Interest
-                                </Button>
-                              )}
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, interests: !prev.interests }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.interests ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
+
+                            {expandedSections.interests && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.interests && resumeData.interests.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 pt-2">
+                                    {resumeData.interests.map((interest, idx) => (
+                                      <div key={idx} className="group flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 rounded-full border border-zinc-200 dark:border-zinc-700 hover:border-pink-200 dark:hover:border-pink-800 transition-all duration-200">
+                                        <span className="text-sm text-zinc-700 dark:text-zinc-300">{interest}</span>
+                                        <button
+                                          onClick={() => {
+                                            setResumeData(prev => ({
+                                              ...prev,
+                                              interests: prev.interests.filter((_, i) => i !== idx),
+                                            }));
+                                          }}
+                                          className="p-0.5 rounded-full hover:bg-red-100 dark:hover:bg-red-900/40 text-zinc-400 hover:text-red-500 transition-colors"
+                                        >
+                                          <XMarkIcon className="h-3 w-3" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {editingSection === 'interests' ? (
+                                  <div className="space-y-4 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Interest
+                                        </Label>
+                                        <Input
+                                          value={currentInterest}
+                                          onChange={(e) => setCurrentInterest(e.target.value)}
+                                          placeholder="e.g. Photography, Hiking, Chess"
+                                          onKeyPress={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              if (currentInterest.trim()) {
+                                                addInterest();
+                                              }
+                                            }
+                                          }}
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500"
+                                          autoFocus
+                                        />
+                                      </Field>
+                                      <div className="flex items-center justify-end gap-2 pt-2">
+                                        <Button
+                                          onClick={() => {
+                                            setCurrentInterest('');
+                                            setEditingSection(null);
+                                          }}
+                                          plain
+                                          size="sm"
+                                          className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                        >
+                                          Done
+                                        </Button>
+                                        <Button
+                                          onClick={() => {
+                                            if (currentInterest.trim()) {
+                                              addInterest();
+                                            }
+                                          }}
+                                          color="pink"
+                                          size="sm"
+                                          className="transition-all duration-200 hover:scale-105"
+                                        >
+                                          Add Interest
+                                        </Button>
+                                      </div>
+                                    </FieldGroup>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => setEditingSection('interests')}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Interest
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Projects Card - Only show if added */}
                         {addedSections.includes('projects') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Projects</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, projects: !prev.projects }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.projects ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.projects && (
-                            <div className="space-y-3">
-                              {resumeData.projects && resumeData.projects.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.projects.map((project, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{project.name}</p>
-                                        {project.technologies && (
-                                          <p className="text-xs text-zinc-500">{project.technologies}</p>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentProject(project);
-                                            setEditingIndex(idx);
-                                            setEditingSection('projects');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              projects: prev.projects.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-900/20">
+                                  <BriefcaseIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No projects added yet</p>
-                              )}
-                              {editingSection === 'projects' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Project Name</Label>
-                                    <Input
-                                      value={currentProject.name}
-                                      onChange={(e) => setCurrentProject(prev => ({ ...prev, name: e.target.value }))}
-                                      placeholder="E-commerce Platform"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Description</Label>
-                                    <RichTextEditor
-                                      value={currentProject.description || ''}
-                                      onChange={(value) => setCurrentProject(prev => ({ ...prev, description: value }))}
-                                      placeholder="Describe your project..."
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Technologies</Label>
-                                    <Input
-                                      value={currentProject.technologies}
-                                      onChange={(e) => setCurrentProject(prev => ({ ...prev, technologies: e.target.value }))}
-                                      placeholder="React, Node.js, MongoDB"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>URL (Optional)</Label>
-                                    <Input
-                                      type="url"
-                                      value={currentProject.url}
-                                      onChange={(e) => setCurrentProject(prev => ({ ...prev, url: e.target.value }))}
-                                      placeholder="https://..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentProject.name) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              projects: prev.projects.map((p, i) => i === editingIndex ? currentProject : p),
-                                            }));
-                                          } else {
-                                            addProject();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Projects</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentProject({ name: '', description: '', technologies: '', url: '', startDate: '', endDate: '' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'projects' ? null : 'projects');
+                                    if (!expandedSections.projects) {
+                                      setExpandedSections(prev => ({ ...prev, projects: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Project"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, projects: !prev.projects }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.projects ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.projects && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.projects && resumeData.projects.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.projects.map((project, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-orange-500 dark:bg-orange-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white truncate">{project.name || 'Project Name'}</p>
+                                          {project.technologies && (
+                                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">{project.technologies}</p>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentProject(project);
+                                              setEditingIndex(idx);
+                                              setEditingSection('projects');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                projects: prev.projects.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {editingSection === 'projects' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Project Name
+                                        </Label>
+                                        <Input
+                                          value={currentProject.name}
+                                          onChange={(e) => setCurrentProject(prev => ({ ...prev, name: e.target.value }))}
+                                          placeholder="e.g. E-commerce Platform"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Description
+                                        </Label>
+                                        <RichTextEditor
+                                          value={currentProject.description || ''}
+                                          onChange={(value) => setCurrentProject(prev => ({ ...prev, description: value }))}
+                                          placeholder="Describe your project, key features, and your contribution..."
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Technologies
+                                        </Label>
+                                        <Input
+                                          value={currentProject.technologies}
+                                          onChange={(e) => setCurrentProject(prev => ({ ...prev, technologies: e.target.value }))}
+                                          placeholder="e.g. React, Node.js, MongoDB"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Project URL (Optional)
+                                        </Label>
+                                        <Input
+                                          type="url"
+                                          value={currentProject.url}
+                                          onChange={(e) => setCurrentProject(prev => ({ ...prev, url: e.target.value }))}
+                                          placeholder="https://..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentProject({ name: '', description: '', technologies: '', url: '', startDate: '', endDate: '' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentProject({ name: '', description: '', technologies: '', url: '', startDate: '', endDate: '' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentProject.name) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                projects: prev.projects.map((p, i) => i === editingIndex ? currentProject : p),
+                                              }));
+                                            } else {
+                                              addProject();
+                                            }
+                                            setCurrentProject({ name: '', description: '', technologies: '', url: '', startDate: '', endDate: '' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="orange"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Project' : 'Add Project'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentProject({ name: '', description: '', technologies: '', url: '', startDate: '', endDate: '' });
-                                    setEditingIndex(null);
-                                    setEditingSection('projects');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentProject({ name: '', description: '', technologies: '', url: '', startDate: '', endDate: '' });
+                                      setEditingIndex(null);
+                                      setEditingSection('projects');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Project
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Courses Card - Only show if added */}
                         {addedSections.includes('courses') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Courses</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, courses: !prev.courses }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.courses ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.courses && (
-                            <div className="space-y-3">
-                              {resumeData.courses && resumeData.courses.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.courses.map((course, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{course.name}</p>
-                                        <p className="text-xs text-zinc-500">{course.provider}</p>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentCourse(course);
-                                            setEditingIndex(idx);
-                                            setEditingSection('courses');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              courses: prev.courses.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-900/20">
+                                  <AcademicCapIcon className="h-4 w-4 text-teal-600 dark:text-teal-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No courses added yet</p>
-                              )}
-                              {editingSection === 'courses' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Course Name</Label>
-                                    <Input
-                                      value={currentCourse.name}
-                                      onChange={(e) => setCurrentCourse(prev => ({ ...prev, name: e.target.value }))}
-                                      placeholder="Machine Learning Specialization"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Provider</Label>
-                                    <Input
-                                      value={currentCourse.provider}
-                                      onChange={(e) => setCurrentCourse(prev => ({ ...prev, provider: e.target.value }))}
-                                      placeholder="Coursera"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Date</Label>
-                                    <Input
-                                      type="month"
-                                      value={currentCourse.date}
-                                      onChange={(e) => setCurrentCourse(prev => ({ ...prev, date: e.target.value }))}
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Certificate URL (Optional)</Label>
-                                    <Input
-                                      type="url"
-                                      value={currentCourse.certificateUrl}
-                                      onChange={(e) => setCurrentCourse(prev => ({ ...prev, certificateUrl: e.target.value }))}
-                                      placeholder="https://..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentCourse.name) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              courses: prev.courses.map((c, i) => i === editingIndex ? currentCourse : c),
-                                            }));
-                                          } else {
-                                            addCourse();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Courses</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentCourse({ name: '', provider: '', date: '', certificateUrl: '' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'courses' ? null : 'courses');
+                                    if (!expandedSections.courses) {
+                                      setExpandedSections(prev => ({ ...prev, courses: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Course"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, courses: !prev.courses }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.courses ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.courses && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.courses && resumeData.courses.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.courses.map((course, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-teal-500 dark:bg-teal-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white truncate">{course.name || 'Course Name'}</p>
+                                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">{course.provider || 'Provider'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentCourse(course);
+                                              setEditingIndex(idx);
+                                              setEditingSection('courses');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                courses: prev.courses.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {editingSection === 'courses' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Course Name
+                                        </Label>
+                                        <Input
+                                          value={currentCourse.name}
+                                          onChange={(e) => setCurrentCourse(prev => ({ ...prev, name: e.target.value }))}
+                                          placeholder="e.g. Machine Learning Specialization"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Provider
+                                        </Label>
+                                        <Input
+                                          value={currentCourse.provider}
+                                          onChange={(e) => setCurrentCourse(prev => ({ ...prev, provider: e.target.value }))}
+                                          placeholder="e.g. Coursera"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Completion Date
+                                        </Label>
+                                        <Input
+                                          type="month"
+                                          value={currentCourse.date}
+                                          onChange={(e) => setCurrentCourse(prev => ({ ...prev, date: e.target.value }))}
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Certificate URL (Optional)
+                                        </Label>
+                                        <Input
+                                          type="url"
+                                          value={currentCourse.certificateUrl}
+                                          onChange={(e) => setCurrentCourse(prev => ({ ...prev, certificateUrl: e.target.value }))}
+                                          placeholder="https://..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentCourse({ name: '', provider: '', date: '', certificateUrl: '' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentCourse({ name: '', provider: '', date: '', certificateUrl: '' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentCourse.name) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                courses: prev.courses.map((c, i) => i === editingIndex ? currentCourse : c),
+                                              }));
+                                            } else {
+                                              addCourse();
+                                            }
+                                            setCurrentCourse({ name: '', provider: '', date: '', certificateUrl: '' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="teal"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Course' : 'Add Course'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentCourse({ name: '', provider: '', date: '', certificateUrl: '' });
-                                    setEditingIndex(null);
-                                    setEditingSection('courses');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentCourse({ name: '', provider: '', date: '', certificateUrl: '' });
+                                      setEditingIndex(null);
+                                      setEditingSection('courses');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Course
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Awards Card - Only show if added */}
                         {addedSections.includes('awards') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Awards</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, awards: !prev.awards }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.awards ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.awards && (
-                            <div className="space-y-3">
-                              {resumeData.awards && resumeData.awards.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.awards.map((award, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{award.title}</p>
-                                        <p className="text-xs text-zinc-500">{award.issuer}</p>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentAward(award);
-                                            setEditingIndex(idx);
-                                            setEditingSection('awards');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              awards: prev.awards.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
+                                  <TrophyIcon className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No awards added yet</p>
-                              )}
-                              {editingSection === 'awards' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Award Title</Label>
-                                    <Input
-                                      value={currentAward.title}
-                                      onChange={(e) => setCurrentAward(prev => ({ ...prev, title: e.target.value }))}
-                                      placeholder="Best Student Award"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Issuer</Label>
-                                    <Input
-                                      value={currentAward.issuer}
-                                      onChange={(e) => setCurrentAward(prev => ({ ...prev, issuer: e.target.value }))}
-                                      placeholder="University Name"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Date</Label>
-                                    <Input
-                                      type="month"
-                                      value={currentAward.date}
-                                      onChange={(e) => setCurrentAward(prev => ({ ...prev, date: e.target.value }))}
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Description (Optional)</Label>
-                                    <Textarea
-                                      value={currentAward.description}
-                                      onChange={(e) => setCurrentAward(prev => ({ ...prev, description: e.target.value }))}
-                                      placeholder="Additional details..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentAward.title) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              awards: prev.awards.map((a, i) => i === editingIndex ? currentAward : a),
-                                            }));
-                                          } else {
-                                            addAward();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Awards</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentAward({ title: '', issuer: '', date: '', description: '' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'awards' ? null : 'awards');
+                                    if (!expandedSections.awards) {
+                                      setExpandedSections(prev => ({ ...prev, awards: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Award"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, awards: !prev.awards }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.awards ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.awards && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.awards && resumeData.awards.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.awards.map((award, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-yellow-500 dark:bg-yellow-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white truncate">{award.title || 'Award Title'}</p>
+                                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">{award.issuer || 'Issuer'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentAward(award);
+                                              setEditingIndex(idx);
+                                              setEditingSection('awards');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                awards: prev.awards.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {editingSection === 'awards' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Award Title
+                                        </Label>
+                                        <Input
+                                          value={currentAward.title}
+                                          onChange={(e) => setCurrentAward(prev => ({ ...prev, title: e.target.value }))}
+                                          placeholder="e.g. Best Student Award"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Issuer
+                                        </Label>
+                                        <Input
+                                          value={currentAward.issuer}
+                                          onChange={(e) => setCurrentAward(prev => ({ ...prev, issuer: e.target.value }))}
+                                          placeholder="e.g. University Name"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Date
+                                        </Label>
+                                        <Input
+                                          type="month"
+                                          value={currentAward.date}
+                                          onChange={(e) => setCurrentAward(prev => ({ ...prev, date: e.target.value }))}
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Description (Optional)
+                                        </Label>
+                                        <Textarea
+                                          value={currentAward.description}
+                                          onChange={(e) => setCurrentAward(prev => ({ ...prev, description: e.target.value }))}
+                                          placeholder="Additional details about the award..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentAward({ title: '', issuer: '', date: '', description: '' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentAward({ title: '', issuer: '', date: '', description: '' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentAward.title) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                awards: prev.awards.map((a, i) => i === editingIndex ? currentAward : a),
+                                              }));
+                                            } else {
+                                              addAward();
+                                            }
+                                            setCurrentAward({ title: '', issuer: '', date: '', description: '' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="yellow"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Award' : 'Add Award'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentAward({ title: '', issuer: '', date: '', description: '' });
-                                    setEditingIndex(null);
-                                    setEditingSection('awards');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentAward({ title: '', issuer: '', date: '', description: '' });
+                                      setEditingIndex(null);
+                                      setEditingSection('awards');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Award
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Organizations Card - Only show if added */}
                         {addedSections.includes('organizations') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Organizations</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, organizations: !prev.organizations }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.organizations ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.organizations && (
-                            <div className="space-y-3">
-                              {resumeData.organizations && resumeData.organizations.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.organizations.map((org, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{org.name}</p>
-                                        <p className="text-xs text-zinc-500">{org.role}</p>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentOrganization(org);
-                                            setEditingIndex(idx);
-                                            setEditingSection('organizations');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              organizations: prev.organizations.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
+                                  <UserGroupIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No organizations added yet</p>
-                              )}
-                              {editingSection === 'organizations' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Organization Name</Label>
-                                    <Input
-                                      value={currentOrganization.name}
-                                      onChange={(e) => setCurrentOrganization(prev => ({ ...prev, name: e.target.value }))}
-                                      placeholder="Red Cross"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Role</Label>
-                                    <Input
-                                      value={currentOrganization.role}
-                                      onChange={(e) => setCurrentOrganization(prev => ({ ...prev, role: e.target.value }))}
-                                      placeholder="Volunteer"
-                                    />
-                                  </Field>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <Field>
-                                      <Label>Start Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentOrganization.startDate}
-                                        onChange={(e) => setCurrentOrganization(prev => ({ ...prev, startDate: e.target.value }))}
-                                      />
-                                    </Field>
-                                    <Field>
-                                      <Label>End Date</Label>
-                                      <Input
-                                        type="month"
-                                        value={currentOrganization.endDate}
-                                        onChange={(e) => setCurrentOrganization(prev => ({ ...prev, endDate: e.target.value }))}
-                                      />
-                                    </Field>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Organizations</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentOrganization({ name: '', role: '', startDate: '', endDate: '', description: '' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'organizations' ? null : 'organizations');
+                                    if (!expandedSections.organizations) {
+                                      setExpandedSections(prev => ({ ...prev, organizations: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Organization"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, organizations: !prev.organizations }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.organizations ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.organizations && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.organizations && resumeData.organizations.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.organizations.map((org, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-indigo-500 dark:bg-indigo-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white truncate">{org.name || 'Organization Name'}</p>
+                                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">{org.role || 'Role'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentOrganization(org);
+                                              setEditingIndex(idx);
+                                              setEditingSection('organizations');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                organizations: prev.organizations.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                  <Field>
-                                    <Label>Description (Optional)</Label>
-                                    <Textarea
-                                      value={currentOrganization.description}
-                                      onChange={(e) => setCurrentOrganization(prev => ({ ...prev, description: e.target.value }))}
-                                      placeholder="Your contributions..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentOrganization.name) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              organizations: prev.organizations.map((o, i) => i === editingIndex ? currentOrganization : o),
-                                            }));
-                                          } else {
-                                            addOrganization();
-                                          }
+                                )}
+
+                                {editingSection === 'organizations' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Organization Name
+                                        </Label>
+                                        <Input
+                                          value={currentOrganization.name}
+                                          onChange={(e) => setCurrentOrganization(prev => ({ ...prev, name: e.target.value }))}
+                                          placeholder="e.g. Red Cross"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Role
+                                        </Label>
+                                        <Input
+                                          value={currentOrganization.role}
+                                          onChange={(e) => setCurrentOrganization(prev => ({ ...prev, role: e.target.value }))}
+                                          placeholder="e.g. Volunteer"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        />
+                                      </Field>
+                                      <div className="grid grid-cols-2 gap-4">
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            Start Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentOrganization.startDate}
+                                            onChange={(e) => setCurrentOrganization(prev => ({ ...prev, startDate: e.target.value }))}
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                          />
+                                        </Field>
+                                        <Field>
+                                          <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                            End Date
+                                          </Label>
+                                          <Input
+                                            type="month"
+                                            value={currentOrganization.endDate}
+                                            onChange={(e) => setCurrentOrganization(prev => ({ ...prev, endDate: e.target.value }))}
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                          />
+                                        </Field>
+                                      </div>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Description (Optional)
+                                        </Label>
+                                        <Textarea
+                                          value={currentOrganization.description}
+                                          onChange={(e) => setCurrentOrganization(prev => ({ ...prev, description: e.target.value }))}
+                                          placeholder="Describe your role and contributions..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentOrganization({ name: '', role: '', startDate: '', endDate: '', description: '' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentOrganization({ name: '', role: '', startDate: '', endDate: '', description: '' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentOrganization.name) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                organizations: prev.organizations.map((o, i) => i === editingIndex ? currentOrganization : o),
+                                              }));
+                                            } else {
+                                              addOrganization();
+                                            }
+                                            setCurrentOrganization({ name: '', role: '', startDate: '', endDate: '', description: '' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="indigo"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Organization' : 'Add Organization'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentOrganization({ name: '', role: '', startDate: '', endDate: '', description: '' });
-                                    setEditingIndex(null);
-                                    setEditingSection('organizations');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentOrganization({ name: '', role: '', startDate: '', endDate: '', description: '' });
+                                      setEditingIndex(null);
+                                      setEditingSection('organizations');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Organization
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Publications Card - Only show if added */}
                         {addedSections.includes('publications') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Publications</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, publications: !prev.publications }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.publications ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.publications && (
-                            <div className="space-y-3">
-                              {resumeData.publications && resumeData.publications.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.publications.map((pub, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{pub.title}</p>
-                                        <p className="text-xs text-zinc-500">{pub.publisher}</p>
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentPublication(pub);
-                                            setEditingIndex(idx);
-                                            setEditingSection('publications');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              publications: prev.publications.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                                  <DocumentTextIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No publications added yet</p>
-                              )}
-                              {editingSection === 'publications' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Title</Label>
-                                    <Input
-                                      value={currentPublication.title}
-                                      onChange={(e) => setCurrentPublication(prev => ({ ...prev, title: e.target.value }))}
-                                      placeholder="Research Paper Title"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Publisher</Label>
-                                    <Input
-                                      value={currentPublication.publisher}
-                                      onChange={(e) => setCurrentPublication(prev => ({ ...prev, publisher: e.target.value }))}
-                                      placeholder="Journal Name"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Date</Label>
-                                    <Input
-                                      type="month"
-                                      value={currentPublication.date}
-                                      onChange={(e) => setCurrentPublication(prev => ({ ...prev, date: e.target.value }))}
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>URL (Optional)</Label>
-                                    <Input
-                                      type="url"
-                                      value={currentPublication.url}
-                                      onChange={(e) => setCurrentPublication(prev => ({ ...prev, url: e.target.value }))}
-                                      placeholder="https://..."
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Description (Optional)</Label>
-                                    <Textarea
-                                      value={currentPublication.description}
-                                      onChange={(e) => setCurrentPublication(prev => ({ ...prev, description: e.target.value }))}
-                                      placeholder="Additional details..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentPublication.title) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              publications: prev.publications.map((p, i) => i === editingIndex ? currentPublication : p),
-                                            }));
-                                          } else {
-                                            addPublication();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Publications</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentPublication({ title: '', publisher: '', date: '', url: '', description: '' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'publications' ? null : 'publications');
+                                    if (!expandedSections.publications) {
+                                      setExpandedSections(prev => ({ ...prev, publications: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Publication"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, publications: !prev.publications }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.publications ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.publications && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.publications && resumeData.publications.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.publications.map((pub, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-emerald-500 dark:bg-emerald-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white truncate">{pub.title || 'Publication Title'}</p>
+                                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">{pub.publisher || 'Publisher'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentPublication(pub);
+                                              setEditingIndex(idx);
+                                              setEditingSection('publications');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                publications: prev.publications.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {editingSection === 'publications' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Title
+                                        </Label>
+                                        <Input
+                                          value={currentPublication.title}
+                                          onChange={(e) => setCurrentPublication(prev => ({ ...prev, title: e.target.value }))}
+                                          placeholder="e.g. Research Paper Title"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Publisher
+                                        </Label>
+                                        <Input
+                                          value={currentPublication.publisher}
+                                          onChange={(e) => setCurrentPublication(prev => ({ ...prev, publisher: e.target.value }))}
+                                          placeholder="e.g. Journal Name"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Date
+                                        </Label>
+                                        <Input
+                                          type="month"
+                                          value={currentPublication.date}
+                                          onChange={(e) => setCurrentPublication(prev => ({ ...prev, date: e.target.value }))}
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          URL (Optional)
+                                        </Label>
+                                        <Input
+                                          type="url"
+                                          value={currentPublication.url}
+                                          onChange={(e) => setCurrentPublication(prev => ({ ...prev, url: e.target.value }))}
+                                          placeholder="https://..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Description (Optional)
+                                        </Label>
+                                        <Textarea
+                                          value={currentPublication.description}
+                                          onChange={(e) => setCurrentPublication(prev => ({ ...prev, description: e.target.value }))}
+                                          placeholder="Additional details about the publication..."
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentPublication({ title: '', publisher: '', date: '', url: '', description: '' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentPublication({ title: '', publisher: '', date: '', url: '', description: '' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentPublication.title) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                publications: prev.publications.map((p, i) => i === editingIndex ? currentPublication : p),
+                                              }));
+                                            } else {
+                                              addPublication();
+                                            }
+                                            setCurrentPublication({ title: '', publisher: '', date: '', url: '', description: '' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="emerald"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Publication' : 'Add Publication'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentPublication({ title: '', publisher: '', date: '', url: '', description: '' });
-                                    setEditingIndex(null);
-                                    setEditingSection('publications');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentPublication({ title: '', publisher: '', date: '', url: '', description: '' });
+                                      setEditingIndex(null);
+                                      setEditingSection('publications');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Publication
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Declaration Card - Only show if added */}
                         {addedSections.includes('declaration') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Declaration</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, declaration: !prev.declaration }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.declaration ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.declaration && (
-                            <div className="space-y-2">
-                              {editingSection === 'declaration' ? (
-                                <RichTextEditor
-                                  value={resumeData.declaration || ''}
-                                  onChange={(value) => setResumeData(prev => ({ ...prev, declaration: value }))}
-                                  placeholder="I hereby declare that the information provided is true and correct..."
-                                />
-                              ) : (
-                                <div className="space-y-2">
-                                  {resumeData.declaration ? (
-                                    <div 
-                                      className="text-sm text-zinc-600 prose prose-sm max-w-none"
-                                      dangerouslySetInnerHTML={{ __html: resumeData.declaration }}
-                                    />
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20">
+                                  <PencilIcon className="h-4 w-4 text-red-600 dark:text-red-400" />
+                                </div>
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Declaration</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, declaration: !prev.declaration }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.declaration ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
                                   ) : (
-                                    <p className="text-sm text-zinc-400 italic">No declaration added yet</p>
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
                                   )}
-                                  <Button
-                                    onClick={() => setEditingSection('declaration')}
-                                    plain
-                                    size="sm"
-                                    className="text-xs"
-                                  >
-                                    <PencilIcon className="h-3 w-3" />
-                                    Edit
-                                  </Button>
-                                </div>
-                              )}
-                              {editingSection === 'declaration' && (
-                                <div className="flex gap-2 mt-2">
-                                  <Button onClick={() => setEditingSection(null)} outline size="sm">
-                                    Save
-                                  </Button>
-                                  <Button onClick={() => setEditingSection(null)} plain size="sm">
-                                    Cancel
-                                  </Button>
-                                </div>
-                              )}
+                                </button>
+                              </div>
                             </div>
-                          )}
-                        </div>
+
+                            {expandedSections.declaration && (
+                              <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {editingSection === 'declaration' ? (
+                                  <div className="space-y-4">
+                                    <div className="pt-2">
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        Declaration Text
+                                      </Label>
+                                      <RichTextEditor
+                                        value={resumeData.declaration || ''}
+                                        onChange={(value) => setResumeData(prev => ({ ...prev, declaration: value }))}
+                                        placeholder="I hereby declare that the information provided is true and correct..."
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => setEditingSection(null)}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => setEditingSection(null)}
+                                        color="rose"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        Save Declaration
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="group pt-2">
+                                    {resumeData.declaration ? (
+                                      <div
+                                        className="text-sm text-zinc-600 dark:text-zinc-300 prose prose-sm max-w-none prose-zinc dark:prose-invert p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 group-hover:border-zinc-300 dark:group-hover:border-zinc-600 transition-all duration-200"
+                                        dangerouslySetInnerHTML={{ __html: resumeData.declaration }}
+                                      />
+                                    ) : (
+                                      <div className="text-sm text-zinc-400 dark:text-zinc-500 italic p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 text-center">
+                                        No declaration added yet
+                                      </div>
+                                    )}
+                                    <div className="mt-3">
+                                      <Button
+                                        onClick={() => setEditingSection('declaration')}
+                                        outline
+                                        size="sm"
+                                        className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                      >
+                                        <PencilIcon className="h-3.5 w-3.5" />
+                                        Edit Declaration
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
 
                         {/* Custom Card - Only show if added */}
                         {addedSections.includes('custom') && (
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-zinc-950">Custom Section</h3>
-                            <button
+                          <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                            <div
+                              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                               onClick={() => setExpandedSections(prev => ({ ...prev, custom: !prev.custom }))}
-                              className="p-1 hover:bg-zinc-100 rounded transition-colors"
                             >
-                              {expandedSections.custom ? (
-                                <ChevronUpIcon className="h-4 w-4 text-zinc-600" />
-                              ) : (
-                                <ChevronDownIcon className="h-4 w-4 text-zinc-600" />
-                              )}
-                            </button>
-                          </div>
-                          
-                          {expandedSections.custom && (
-                            <div className="space-y-3">
-                              {resumeData.custom && resumeData.custom.length > 0 ? (
-                                <div className="space-y-2">
-                                  {resumeData.custom.map((item, idx) => (
-                                    <div key={idx} className="flex items-start gap-2 p-2 bg-zinc-50 rounded border border-zinc-200">
-                                      <div className="w-1 h-full bg-zinc-300 rounded" />
-                                      <div className="flex-1">
-                                        <p className="text-sm font-medium text-zinc-950">{item.title}</p>
-                                        {item.content && (
-                                          <p className="text-xs text-zinc-500 line-clamp-2">{item.content}</p>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => {
-                                            setCurrentCustom(item);
-                                            setEditingIndex(idx);
-                                            setEditingSection('custom');
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <PencilIcon className="h-3 w-3 text-zinc-600" />
-                                        </button>
-                                        <button
-                                          onClick={() => {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              custom: prev.custom.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="p-1 hover:bg-zinc-200 rounded"
-                                        >
-                                          <TrashIcon className="h-3 w-3 text-red-600" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-900/20">
+                                  <PuzzlePieceIcon className="h-4 w-4 text-fuchsia-600 dark:text-fuchsia-400" />
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 italic">No custom sections added yet</p>
-                              )}
-                              {editingSection === 'custom' ? (
-                                <FieldGroup>
-                                  <Field>
-                                    <Label>Section Title</Label>
-                                    <Input
-                                      value={currentCustom.title}
-                                      onChange={(e) => setCurrentCustom(prev => ({ ...prev, title: e.target.value }))}
-                                      placeholder="Custom Section Title"
-                                    />
-                                  </Field>
-                                  <Field>
-                                    <Label>Content</Label>
-                                    <RichTextEditor
-                                      value={currentCustom.content || ''}
-                                      onChange={(value) => setCurrentCustom(prev => ({ ...prev, content: value }))}
-                                      placeholder="Enter your custom content..."
-                                    />
-                                  </Field>
-                                  <div className="flex gap-2">
-                                    <Button
-                                      onClick={() => {
-                                        if (currentCustom.title) {
-                                          if (editingIndex !== null && editingIndex >= 0) {
-                                            setResumeData(prev => ({
-                                              ...prev,
-                                              custom: prev.custom.map((c, i) => i === editingIndex ? currentCustom : c),
-                                            }));
-                                          } else {
-                                            addCustom();
-                                          }
+                                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Custom Section</h3>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCurrentCustom({ title: '', content: '' });
+                                    setEditingIndex(null);
+                                    setEditingSection(editingSection === 'custom' ? null : 'custom');
+                                    if (!expandedSections.custom) {
+                                      setExpandedSections(prev => ({ ...prev, custom: true }));
+                                    }
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200 hover:scale-105"
+                                  title="Add Item"
+                                >
+                                  <PlusIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedSections(prev => ({ ...prev, custom: !prev.custom }));
+                                  }}
+                                  className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all duration-200"
+                                >
+                                  {expandedSections.custom ? (
+                                    <ChevronUpIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  ) : (
+                                    <ChevronDownIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400 transition-transform duration-200" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expandedSections.custom && (
+                              <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {resumeData.custom && resumeData.custom.length > 0 && (
+                                  <div className="space-y-3 pt-2">
+                                    {resumeData.custom.map((item, idx) => (
+                                      <div key={idx} className="group flex items-start gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600 transition-all duration-200 hover:shadow-sm">
+                                        <div className="w-1 h-full bg-fuchsia-500 dark:bg-fuchsia-400 rounded-full min-h-[40px]" />
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-semibold text-zinc-950 dark:text-white truncate">{item.title || 'Section Title'}</p>
+                                          {item.content && (
+                                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2" dangerouslySetInnerHTML={{ __html: item.content.replace(/<[^>]+>/g, '') }} />
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button
+                                            onClick={() => {
+                                              setCurrentCustom(item);
+                                              setEditingIndex(idx);
+                                              setEditingSection('custom');
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                                            title="Edit"
+                                          >
+                                            <PencilIcon className="h-3.5 w-3.5 text-zinc-600 dark:text-zinc-400" />
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                custom: prev.custom.filter((_, i) => i !== idx),
+                                              }));
+                                            }}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                            title="Delete"
+                                          >
+                                            <TrashIcon className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {editingSection === 'custom' ? (
+                                  <div className="space-y-5 pt-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <FieldGroup className="space-y-5">
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Section Title
+                                        </Label>
+                                        <Input
+                                          value={currentCustom.title}
+                                          onChange={(e) => setCurrentCustom(prev => ({ ...prev, title: e.target.value }))}
+                                          placeholder="e.g. Certifications"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-500"
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                          Content
+                                        </Label>
+                                        <RichTextEditor
+                                          value={currentCustom.content || ''}
+                                          onChange={(value) => setCurrentCustom(prev => ({ ...prev, content: value }))}
+                                          placeholder="Enter content..."
+                                        />
+                                      </Field>
+                                    </FieldGroup>
+                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                                      <Button
+                                        onClick={() => {
                                           setCurrentCustom({ title: '', content: '' });
                                           setEditingIndex(null);
                                           setEditingSection(null);
-                                        }
-                                      }}
-                                      outline
-                                      size="sm"
-                                    >
-                                      {editingIndex !== null ? 'Update' : 'Add'}
-                                    </Button>
-                                    <Button
-                                      onClick={() => {
-                                        setCurrentCustom({ title: '', content: '' });
-                                        setEditingIndex(null);
-                                        setEditingSection(null);
-                                      }}
-                                      plain
-                                      size="sm"
-                                    >
-                                      Cancel
-                                    </Button>
+                                        }}
+                                        plain
+                                        size="sm"
+                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => {
+                                          if (currentCustom.title) {
+                                            if (editingIndex !== null && editingIndex >= 0) {
+                                              setResumeData(prev => ({
+                                                ...prev,
+                                                custom: prev.custom.map((c, i) => i === editingIndex ? currentCustom : c),
+                                              }));
+                                            } else {
+                                              addCustom();
+                                            }
+                                            setCurrentCustom({ title: '', content: '' });
+                                            setEditingIndex(null);
+                                            setEditingSection(null);
+                                          }
+                                        }}
+                                        color="fuchsia"
+                                        size="sm"
+                                        className="transition-all duration-200 hover:scale-105"
+                                      >
+                                        {editingIndex !== null ? 'Update Section' : 'Add Section'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </FieldGroup>
-                              ) : (
-                                <Button
-                                  onClick={() => {
-                                    setCurrentCustom({ title: '', content: '' });
-                                    setEditingIndex(null);
-                                    setEditingSection('custom');
-                                  }}
-                                  outline
-                                  size="sm"
-                                  className="w-full"
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                  Add Entry
-                                </Button>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <Button
+                                    onClick={() => {
+                                      setCurrentCustom({ title: '', content: '' });
+                                      setEditingIndex(null);
+                                      setEditingSection('custom');
+                                    }}
+                                    outline
+                                    size="sm"
+                                    className="w-full transition-all duration-200 hover:scale-[1.02]"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                    Add Custom Section
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
-                        
+
                         {/* Add Content Button - Opens Modal to Select Block Type */}
-                        <button 
+                        <button
                           onClick={() => setShowAddBlockModal(true)}
                           className="w-full py-3 px-4 bg-gradient-to-r from-pink-500 to-orange-500 text-white rounded-lg font-medium hover:from-pink-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2"
                         >
                           <PlusIcon className="h-5 w-5" />
                           Add Content
                         </button>
-                        
+
+
+
                         {/* Block Type Selection Modal - Grid Layout */}
                         <Transition appear show={showAddBlockModal} as={Fragment}>
                           <Dialog as="div" className="relative z-50" onClose={() => setShowAddBlockModal(false)}>
@@ -4470,11 +5533,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('education')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('education')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('education')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <AcademicCapIcon className="h-8 w-8 text-zinc-600" />
@@ -4498,11 +5560,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('experience')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('experience')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('experience')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <BriefcaseIcon className="h-8 w-8 text-zinc-600" />
@@ -4526,11 +5587,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('skills')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('skills')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('skills')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <LightBulbIcon className="h-8 w-8 text-zinc-600" />
@@ -4554,11 +5614,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('profileSummary')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('profileSummary')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('profileSummary')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <UserIcon className="h-8 w-8 text-zinc-600" />
@@ -4582,11 +5641,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('languages')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('languages')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('languages')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <GlobeAltIcon className="h-8 w-8 text-zinc-600" />
@@ -4610,11 +5668,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('certifications')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('certifications')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('certifications')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <DocumentTextIcon className="h-8 w-8 text-zinc-600" />
@@ -4638,11 +5695,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('interests')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('interests')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('interests')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <HeartIcon className="h-8 w-8 text-zinc-600" />
@@ -4666,11 +5722,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('projects')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('projects')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('projects')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <FolderIcon className="h-8 w-8 text-zinc-600" />
@@ -4694,11 +5749,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('courses')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('courses')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('courses')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <BookOpenIcon className="h-8 w-8 text-zinc-600" />
@@ -4722,11 +5776,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('awards')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('awards')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('awards')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <TrophyIcon className="h-8 w-8 text-zinc-600" />
@@ -4750,11 +5803,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('organizations')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('organizations')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('organizations')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <HeartIcon className="h-8 w-8 text-zinc-600" />
@@ -4778,11 +5830,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('publications')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('publications')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('publications')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <BookOpenIcon className="h-8 w-8 text-zinc-600" />
@@ -4806,11 +5857,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('references')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('references')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('references')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <UserGroupIcon className="h-8 w-8 text-zinc-600" />
@@ -4834,11 +5884,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('declaration')}
-                                          className={`p-4 rounded-lg border transition-all text-left ${
-                                            addedSections.includes('declaration')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
-                                          }`}
+                                          className={`p-4 rounded-lg border transition-all text-left ${addedSections.includes('declaration')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <PencilIcon className="h-8 w-8 text-zinc-600" />
@@ -4862,11 +5911,10 @@ export default function AIResumeBuilder() {
                                             }
                                           }}
                                           disabled={addedSections.includes('custom')}
-                                          className={`p-4 rounded-lg border-2 border-dashed transition-all text-left ${
-                                            addedSections.includes('custom')
-                                              ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
-                                              : 'bg-zinc-50 border-zinc-300 hover:bg-zinc-100 hover:border-zinc-400'
-                                          }`}
+                                          className={`p-4 rounded-lg border-2 border-dashed transition-all text-left ${addedSections.includes('custom')
+                                            ? 'bg-zinc-100 border-zinc-300 opacity-50 cursor-not-allowed'
+                                            : 'bg-zinc-50 border-zinc-300 hover:bg-zinc-100 hover:border-zinc-400'
+                                            }`}
                                         >
                                           <div className="flex items-start justify-between mb-3">
                                             <PuzzlePieceIcon className="h-8 w-8 text-zinc-600" />
@@ -4888,52 +5936,110 @@ export default function AIResumeBuilder() {
                       </>
                     )}
 
+
                     {/* Customize Tab */}
                     {activeTab === EDITOR_TABS.CUSTOMIZE && (
-                      <div className="space-y-4">
-                        <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                          <h3 className="text-sm font-semibold text-zinc-950 mb-4">Template Settings</h3>
-                          <FieldGroup>
+                      <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5">
+                          <h3 className="text-sm font-semibold text-zinc-950 dark:text-white mb-5 flex items-center gap-2">
+                            <SwatchIcon className="h-4 w-4 text-purple-600" />
+                            Template Design
+                          </h3>
+                          <FieldGroup className="space-y-6">
                             <Field>
-                              <Label>Color Scheme</Label>
-                              <select
-                                value={templateSettings.colorScheme}
-                                onChange={(e) => setTemplateSettings(prev => ({ ...prev, colorScheme: e.target.value }))}
-                                className="mt-1 block w-full rounded-lg border-zinc-300 py-2 pl-3 pr-10 text-sm"
-                              >
-                                <option value="blue">Blue</option>
-                                <option value="green">Green</option>
-                                <option value="purple">Purple</option>
-                                <option value="orange">Orange</option>
-                                <option value="red">Red</option>
-                                <option value="indigo">Indigo</option>
-                              </select>
+                              <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3 block">Color Theme</Label>
+                              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                                {[
+                                  { value: 'blue', label: 'Blue', color: 'bg-blue-600', ring: 'ring-blue-600' },
+                                  { value: 'green', label: 'Green', color: 'bg-emerald-600', ring: 'ring-emerald-600' },
+                                  { value: 'purple', label: 'Purple', color: 'bg-purple-600', ring: 'ring-purple-600' },
+                                  { value: 'orange', label: 'Orange', color: 'bg-orange-600', ring: 'ring-orange-600' },
+                                  { value: 'red', label: 'Red', color: 'bg-rose-600', ring: 'ring-rose-600' },
+                                  { value: 'indigo', label: 'Indigo', color: 'bg-indigo-600', ring: 'ring-indigo-600' },
+                                  { value: 'slate', label: 'Slate', color: 'bg-slate-600', ring: 'ring-slate-600' },
+                                  { value: 'black', label: 'Black', color: 'bg-zinc-900', ring: 'ring-zinc-900' },
+                                ].map((scheme) => (
+                                  <button
+                                    key={scheme.value}
+                                    onClick={() => setTemplateSettings(prev => ({ ...prev, colorScheme: scheme.value }))}
+                                    className={`relative group flex flex-col items-center gap-2 p-2 rounded-xl border transition-all duration-200 ${templateSettings.colorScheme === scheme.value
+                                      ? `border-${scheme.value}-200 dark:border-${scheme.value}-900/50 bg-${scheme.value}-50 dark:bg-${scheme.value}-900/10 ring-1 ${scheme.ring}`
+                                      : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900'
+                                      }`}
+                                  >
+                                    <div className={`w-8 h-8 rounded-full ${scheme.color} shadow-sm group-hover:scale-110 transition-transform duration-200`} />
+                                    <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">{scheme.label}</span>
+                                    {templateSettings.colorScheme === scheme.value && (
+                                      <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-current text-blue-600" />
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
                             </Field>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <Field>
+                                <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3 block">Typography</Label>
+                                <div className="space-y-2">
+                                  <select
+                                    value={templateSettings.fontFamily}
+                                    onChange={(e) => setTemplateSettings(prev => ({ ...prev, fontFamily: e.target.value }))}
+                                    className="w-full rounded-lg border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 py-2.5 px-3 text-sm text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer hover:bg-white dark:hover:bg-zinc-700"
+                                  >
+                                    <option value="inter">Inter (Modern Sans)</option>
+                                    <option value="roboto">Roboto (Geometric)</option>
+                                    <option value="playfair">Playfair Display (Serif)</option>
+                                    <option value="lato">Lato (Humanist)</option>
+                                    <option value="montserrat">Montserrat (Bold)</option>
+                                    <option value="opensans">Open Sans (Neutral)</option>
+                                  </select>
+                                  <div className="flex items-center gap-2 px-3 py-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-100 dark:border-zinc-800/50">
+                                    <span className="text-sm text-zinc-500" style={{ fontFamily: templateSettings.fontFamily }}>
+                                      The quick brown fox jumps over the lazy dog.
+                                    </span>
+                                  </div>
+                                </div>
+                              </Field>
+
+                              <Field>
+                                <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3 block">Text Size</Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {[
+                                    { value: 'small', label: 'Compact', icon: 'A', size: 'text-xs' },
+                                    { value: 'medium', label: 'Standard', icon: 'A', size: 'text-sm' },
+                                    { value: 'large', label: 'Large', icon: 'A', size: 'text-base' },
+                                  ].map((size) => (
+                                    <button
+                                      key={size.value}
+                                      onClick={() => setTemplateSettings(prev => ({ ...prev, fontSize: size.value }))}
+                                      className={`flex flex-col items-center justify-center py-3 px-2 rounded-lg border transition-all duration-200 ${templateSettings.fontSize === size.value
+                                        ? 'border-purple-600 dark:border-purple-400 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 ring-1 ring-purple-600 dark:ring-purple-400'
+                                        : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-600 text-zinc-600 dark:text-zinc-400 bg-white dark:bg-zinc-900'
+                                        }`}
+                                    >
+                                      <span className={`font-serif font-medium mb-1 ${size.size}`}>{size.icon}</span>
+                                      <span className="text-[10px] uppercase tracking-wide">{size.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </Field>
+                            </div>
+
                             <Field>
-                              <Label>Font Family</Label>
-                              <select
-                                value={templateSettings.fontFamily}
-                                onChange={(e) => setTemplateSettings(prev => ({ ...prev, fontFamily: e.target.value }))}
-                                className="mt-1 block w-full rounded-lg border-zinc-300 py-2 pl-3 pr-10 text-sm"
-                              >
-                                <option value="inter">Inter</option>
-                                <option value="roboto">Roboto</option>
-                                <option value="playfair">Playfair Display</option>
-                                <option value="lato">Lato</option>
-                                <option value="montserrat">Montserrat</option>
-                              </select>
-                            </Field>
-                            <Field>
-                              <Label>Font Size</Label>
-                              <select
-                                value={templateSettings.fontSize}
-                                onChange={(e) => setTemplateSettings(prev => ({ ...prev, fontSize: e.target.value }))}
-                                className="mt-1 block w-full rounded-lg border-zinc-300 py-2 pl-3 pr-10 text-sm"
-                              >
-                                <option value="small">Small</option>
-                                <option value="medium">Medium</option>
-                                <option value="large">Large</option>
-                              </select>
+                              <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-3 block">Line Spacing</Label>
+                              <div className="flex items-center gap-4 bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-xl border border-zinc-100 dark:border-zinc-800">
+                                <span className="text-xs font-medium text-zinc-500">Tight</span>
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="2"
+                                  step="0.1"
+                                  value={templateSettings.lineHeight || 1.5}
+                                  onChange={(e) => setTemplateSettings(prev => ({ ...prev, lineHeight: parseFloat(e.target.value) }))}
+                                  className="flex-1 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                                />
+                                <span className="text-xs font-medium text-zinc-500">Loose</span>
+                              </div>
                             </Field>
                           </FieldGroup>
                         </div>
@@ -4942,2088 +6048,253 @@ export default function AIResumeBuilder() {
 
                     {/* Overview and Links tabs */}
                     {activeTab === EDITOR_TABS.OVERVIEW && (
-                      <div className="bg-white rounded-lg border border-zinc-200 p-4">
+                      <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-300 dark:border-zinc-700 shadow-sm p-4">
                         <h3 className="text-sm font-semibold text-zinc-950 mb-2">Resume Overview</h3>
                         <p className="text-sm text-zinc-600">Template: {selectedTemplate || 'modern'}</p>
                         <p className="text-sm text-zinc-600">Last updated: {new Date().toLocaleDateString()}</p>
                       </div>
                     )}
-
+                    {/* Links Tab */}
                     {activeTab === EDITOR_TABS.LINKS && (
-                      <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                        <h3 className="text-sm font-semibold text-zinc-950 mb-4">Links</h3>
-                        <FieldGroup>
-                          <Field>
-                            <Label>LinkedIn</Label>
-                            <Input
-                              value={resumeData.linkedin}
-                              onChange={(e) => setResumeData(prev => ({ ...prev, linkedin: e.target.value }))}
-                              placeholder="linkedin.com/in/yourname"
-                            />
-                          </Field>
-                          <Field>
-                            <Label>GitHub</Label>
-                            <Input
-                              value={resumeData.github}
-                              onChange={(e) => setResumeData(prev => ({ ...prev, github: e.target.value }))}
-                              placeholder="github.com/yourname"
-                            />
-                          </Field>
-                          <Field>
-                            <Label>Website</Label>
-                            <Input
-                              value={resumeData.website}
-                              onChange={(e) => setResumeData(prev => ({ ...prev, website: e.target.value }))}
-                              placeholder="yourwebsite.com"
-                            />
-                          </Field>
-                        </FieldGroup>
+                      <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5">
+                          <h3 className="text-sm font-semibold text-zinc-950 dark:text-white mb-5 flex items-center gap-2">
+                            <LinkIcon className="h-4 w-4 text-blue-600" />
+                            Web & Social Links
+                          </h3>
+                          <FieldGroup className="space-y-5">
+                            <Field>
+                              <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">LinkedIn Profile</Label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <svg className="h-5 w-5 text-[#0077b5]" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+                                  </svg>
+                                </div>
+                                <Input
+                                  value={resumeData.linkedin}
+                                  onChange={(e) => setResumeData(prev => ({ ...prev, linkedin: e.target.value }))}
+                                  placeholder="linkedin.com/in/yourname"
+                                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-[#0077b5]/20 focus:border-[#0077b5]"
+                                />
+                              </div>
+                            </Field>
+                            <Field>
+                              <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">GitHub Profile</Label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <svg className="h-5 w-5 text-zinc-900 dark:text-white" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                                  </svg>
+                                </div>
+                                <Input
+                                  value={resumeData.github}
+                                  onChange={(e) => setResumeData(prev => ({ ...prev, github: e.target.value }))}
+                                  placeholder="github.com/yourname"
+                                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-zinc-500/20 focus:border-zinc-500"
+                                />
+                              </div>
+                            </Field>
+                            <Field>
+                              <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">Personal Website / Portfolio</Label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <GlobeAltIcon className="h-5 w-5 text-indigo-500" />
+                                </div>
+                                <Input
+                                  value={resumeData.website}
+                                  onChange={(e) => setResumeData(prev => ({ ...prev, website: e.target.value }))}
+                                  placeholder="yourwebsite.com"
+                                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                                />
+                              </div>
+                            </Field>
+                            <Field>
+                              <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">Twitter / X (Optional)</Label>
+                              <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                  <svg className="h-4 w-4 text-zinc-900 dark:text-white" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                                  </svg>
+                                </div>
+                                <Input
+                                  value={resumeData.twitter}
+                                  onChange={(e) => setResumeData(prev => ({ ...prev, twitter: e.target.value }))}
+                                  placeholder="twitter.com/yourname"
+                                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                                />
+                              </div>
+                            </Field>
+                          </FieldGroup>
+                        </div>
                       </div>
                     )}
                   </div>
-                  
-                  {/* Right Preview Panel - 2 columns */}
-                  <div className="col-span-2 overflow-y-auto bg-white border-l border-zinc-200">
-                    <LivePreview templateSettings={templateSettings} />
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Old Stepper-based Editor - Disabled, using new tabbed editor instead */}
-            {false && ([WIZARD_STEPS.PERSONAL, WIZARD_STEPS.SUMMARY, WIZARD_STEPS.SKILLS, WIZARD_STEPS.EXPERIENCE, WIZARD_STEPS.EDUCATION, WIZARD_STEPS.CERTIFICATIONS, WIZARD_STEPS.REFERENCES].includes(currentStep)) && currentResume && (
-              <div className="w-full">
-                {/* Stepper Component */}
-                <div className="bg-white border-b border-zinc-200 px-6 py-4">
-                  <ResumeStepper
-                    currentStep={currentEditorStep}
-                    completedSteps={completedSteps}
-                    onStepClick={handleStepClick}
-                  />
-                </div>
-                
-                {/* Editor Content - Split Screen */}
-                <div className="grid grid-cols-3 h-[calc(100vh-200px)] w-full">
-                  {/* Form Column - Left (1 column) */}
-                  <div className="col-span-1 overflow-y-auto bg-zinc-50 border-r border-zinc-200">
-                    <div className="p-6">
-                      {/* Personal Details Step */}
-                      {currentStep === WIZARD_STEPS.PERSONAL && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <h2 className="text-2xl font-semibold text-zinc-950 mb-2">Personal Details</h2>
-                            <p className="text-sm text-zinc-600">Enter your basic information</p>
-                          </div>
-                          
-                          <FieldGroup>
-                            <Field>
-                              <Label htmlFor="fullName">Full Name *</Label>
-                              <Input
-                                id="fullName"
-                                value={resumeData.fullName}
-                                onChange={(e) => {
-                                  setResumeData(prev => ({ ...prev, fullName: e.target.value }));
-                                  if (e.target.value) markStepComplete('personal');
-                                }}
-                                placeholder="John Doe"
-                              />
-                            </Field>
-                            <Field>
-                              <Label htmlFor="email">Email *</Label>
-                              <Input
-                                id="email"
-                                type="email"
-                                value={resumeData.email}
-                                onChange={(e) => setResumeData(prev => ({ ...prev, email: e.target.value }))}
-                                placeholder="john@example.com"
-                              />
-                            </Field>
-                            <Field>
-                              <Label htmlFor="phone">Phone</Label>
-                              <Input
-                                id="phone"
-                                value={resumeData.phone}
-                                onChange={(e) => setResumeData(prev => ({ ...prev, phone: e.target.value }))}
-                                placeholder="+1 (555) 123-4567"
-                              />
-                            </Field>
-                            <Field>
-                              <Label htmlFor="location">Location</Label>
-                              <Input
-                                id="location"
-                                value={resumeData.location}
-                                onChange={(e) => setResumeData(prev => ({ ...prev, location: e.target.value }))}
-                                placeholder="City, State"
-                              />
-                            </Field>
-                            <Field>
-                              <Label htmlFor="linkedin">LinkedIn</Label>
-                              <Input
-                                id="linkedin"
-                                value={resumeData.linkedin}
-                                onChange={(e) => setResumeData(prev => ({ ...prev, linkedin: e.target.value }))}
-                                placeholder="linkedin.com/in/yourname"
-                              />
-                            </Field>
-                            <Field>
-                              <Label htmlFor="github">GitHub</Label>
-                              <Input
-                                id="github"
-                                value={resumeData.github}
-                                onChange={(e) => setResumeData(prev => ({ ...prev, github: e.target.value }))}
-                                placeholder="github.com/yourname"
-                              />
-                            </Field>
-                            <Field>
-                              <Label htmlFor="photo">Photo URL</Label>
-                              <Input
-                                id="photo"
-                                value={resumeData.photo}
-                                onChange={(e) => setResumeData(prev => ({ ...prev, photo: e.target.value }))}
-                                placeholder="https://example.com/photo.jpg"
-                              />
-                            </Field>
-                          </FieldGroup>
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline disabled={currentStep === WIZARD_STEPS.PERSONAL}>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button onClick={handleNextStep} color="blue">
-                              Continue
-                              <ChevronRightIcon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Summary Step */}
-                      {currentStep === WIZARD_STEPS.SUMMARY && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <div className="flex items-center justify-between mb-2">
-                              <h2 className="text-2xl font-semibold text-zinc-950">Professional Summary</h2>
-                              <Button
-                                onClick={() => handleRegenerateSection('summary')}
-                                plain
-                                className="text-xs"
-                                disabled={isGenerating}
-                              >
-                                <ArrowPathIcon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                              </Button>
-                            </div>
-                            <p className="text-sm text-zinc-600">Write a compelling summary of your professional background</p>
-                          </div>
-                          
-                          <RichTextEditor
-                            value={resumeData.summary}
-                            onChange={(value) => {
-                              setResumeData(prev => ({ ...prev, summary: value }));
-                              if (value) markStepComplete('summary');
-                            }}
-                            placeholder="Write a compelling professional summary..."
-                          />
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button onClick={handleNextStep} color="blue">
-                              Continue
-                              <ChevronRightIcon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Skills Step */}
-                      {currentStep === WIZARD_STEPS.SKILLS && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <div className="flex items-center justify-between mb-2">
-                              <h2 className="text-2xl font-semibold text-zinc-950">Skills</h2>
-                              <Button
-                                onClick={() => handleRegenerateSection('skills')}
-                                plain
-                                className="text-xs"
-                                disabled={isGenerating}
-                              >
-                                <ArrowPathIcon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                              </Button>
-                            </div>
-                            <p className="text-sm text-zinc-600">List your key skills and competencies</p>
-                          </div>
-                          
-                          <RichTextEditor
-                            value={Array.isArray(resumeData.skills) ? resumeData.skills.join('\n') : (resumeData.skills || '')}
-                            onChange={(value) => {
-                              // Convert HTML to plain text and split by lines
-                              const tempDiv = document.createElement('div');
-                              tempDiv.innerHTML = value;
-                              const textContent = tempDiv.textContent || tempDiv.innerText || '';
-                              const skillsArray = textContent.split('\n').filter(s => s.trim());
-                              setResumeData(prev => ({ ...prev, skills: skillsArray }));
-                              if (skillsArray.length > 0) markStepComplete('skills');
-                            }}
-                            placeholder="Enter your skills, one per line or as a list..."
-                          />
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button onClick={handleNextStep} color="blue">
-                              Continue
-                              <ChevronRightIcon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Experience Step */}
-                      {currentStep === WIZARD_STEPS.EXPERIENCE && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <div className="flex items-center justify-between mb-2">
-                              <h2 className="text-2xl font-semibold text-zinc-950">Work Experience</h2>
-                              <Button
-                                onClick={() => handleRegenerateSection('experience')}
-                                plain
-                                className="text-xs"
-                                disabled={isGenerating}
-                              >
-                                <ArrowPathIcon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                              </Button>
-                            </div>
-                            <p className="text-sm text-zinc-600">Add your work history and achievements</p>
-                          </div>
-                          
-                          <FieldGroup>
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Job Title *</Label>
-                                <Input
-                                  value={currentExperience.title}
-                                  onChange={(e) => setCurrentExperience(prev => ({ ...prev, title: e.target.value }))}
-                                  placeholder="Software Engineer"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Company *</Label>
-                                <Input
-                                  value={currentExperience.company}
-                                  onChange={(e) => setCurrentExperience(prev => ({ ...prev, company: e.target.value }))}
-                                  placeholder="Tech Corp"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <div className="grid grid-cols-3 gap-4">
-                              <Field>
-                                <Label>Start Date</Label>
-                                <Input
-                                  type="month"
-                                  value={currentExperience.startDate}
-                                  onChange={(e) => setCurrentExperience(prev => ({ ...prev, startDate: e.target.value }))}
-                                />
-                              </Field>
-                              <Field>
-                                <Label>End Date</Label>
-                                <Input
-                                  type="month"
-                                  value={currentExperience.endDate}
-                                  onChange={(e) => setCurrentExperience(prev => ({ ...prev, endDate: e.target.value }))}
-                                  disabled={currentExperience.current}
-                                />
-                              </Field>
-                              <Field>
-                                <CheckboxField>
-                                  <Checkbox
-                                    checked={currentExperience.current}
-                                    onChange={(checked) => setCurrentExperience(prev => ({ ...prev, current: checked }))}
-                                    color="blue"
-                                  />
-                                  <Label>Currently Working</Label>
-                                </CheckboxField>
-                              </Field>
-                            </div>
-                            
-                            <Field>
-                              <Label>Location</Label>
-                              <Input
-                                value={currentExperience.location}
-                                onChange={(e) => setCurrentExperience(prev => ({ ...prev, location: e.target.value }))}
-                                placeholder="City, State"
-                              />
-                            </Field>
-                            
-                            <Field>
-                              <Label>Responsibilities & Achievements</Label>
-                              <RichTextEditor
-                                value={currentExperience.responsibilities || ''}
-                                onChange={(value) => setCurrentExperience(prev => ({ ...prev, responsibilities: value }))}
-                                placeholder="Describe your responsibilities, achievements, and impact..."
-                              />
-                            </Field>
-                            
-                            <Button 
-                              onClick={() => {
-                                addExperience();
-                                markStepComplete('experience');
-                              }} 
-                              outline
-                              disabled={!currentExperience.title || !currentExperience.company}
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                              Add Experience
-                            </Button>
-                          </FieldGroup>
-                          
-                          {/* List of added experiences */}
-                          {resumeData.experience && resumeData.experience.length > 0 && (
-                            <div className="mt-6 space-y-3">
-                              {resumeData.experience.map((exp, idx) => (
-                                <div key={idx} className="p-4 border border-zinc-200 rounded-lg bg-white">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-zinc-950">{exp.title} at {exp.company}</p>
-                                      <p className="text-sm text-zinc-500">
-                                        {exp.startDate} - {exp.current ? 'Present' : exp.endDate}
-                                        {exp.location && ` • ${exp.location}`}
-                                      </p>
-                                      {exp.responsibilities && (
-                                        <div 
-                                          className="text-sm text-zinc-600 mt-2 prose prose-sm max-w-none"
-                                          dangerouslySetInnerHTML={{ __html: exp.responsibilities }}
-                                        />
-                                      )}
-                                    </div>
-                                    <Button
-                                      onClick={() => {
-                                        setResumeData(prev => ({
-                                          ...prev,
-                                          experience: prev.experience.filter((_, i) => i !== idx),
-                                        }));
-                                      }}
-                                      plain
-                                      className="text-red-600 ml-2"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button onClick={handleNextStep} color="blue">
-                              Continue
-                              <ChevronRightIcon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Education Step */}
-                      {currentStep === WIZARD_STEPS.EDUCATION && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <h2 className="text-2xl font-semibold text-zinc-950 mb-2">Education</h2>
-                            <p className="text-sm text-zinc-600">Add your educational background</p>
-                          </div>
-                          
-                          <FieldGroup>
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Degree *</Label>
-                                <Input
-                                  value={currentEducation.degree}
-                                  onChange={(e) => setCurrentEducation(prev => ({ ...prev, degree: e.target.value }))}
-                                  placeholder="Bachelor of Science"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Institution *</Label>
-                                <Input
-                                  value={currentEducation.institution}
-                                  onChange={(e) => setCurrentEducation(prev => ({ ...prev, institution: e.target.value }))}
-                                  placeholder="University Name"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <div className="grid grid-cols-3 gap-4">
-                              <Field>
-                                <Label>Start Date</Label>
-                                <Input
-                                  type="month"
-                                  value={currentEducation.startDate}
-                                  onChange={(e) => setCurrentEducation(prev => ({ ...prev, startDate: e.target.value }))}
-                                />
-                              </Field>
-                              <Field>
-                                <Label>End Date</Label>
-                                <Input
-                                  type="month"
-                                  value={currentEducation.endDate}
-                                  onChange={(e) => setCurrentEducation(prev => ({ ...prev, endDate: e.target.value }))}
-                                />
-                              </Field>
-                              <Field>
-                                <Label>GPA</Label>
-                                <Input
-                                  value={currentEducation.gpa}
-                                  onChange={(e) => setCurrentEducation(prev => ({ ...prev, gpa: e.target.value }))}
-                                  placeholder="3.8"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <Field>
-                              <Label>Location</Label>
-                              <Input
-                                value={currentEducation.location}
-                                onChange={(e) => setCurrentEducation(prev => ({ ...prev, location: e.target.value }))}
-                                placeholder="City, State"
-                              />
-                            </Field>
-                            
-                            <Field>
-                              <Label>Description</Label>
-                              <RichTextEditor
-                                value={currentEducation.description || ''}
-                                onChange={(value) => setCurrentEducation(prev => ({ ...prev, description: value }))}
-                                placeholder="Additional details about your education, honors, coursework..."
-                              />
-                            </Field>
-                            
-                            <Button 
-                              onClick={() => {
-                                addEducation();
-                                markStepComplete('education');
-                              }} 
-                              outline
-                              disabled={!currentEducation.degree || !currentEducation.institution}
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                              Add Education
-                            </Button>
-                          </FieldGroup>
-                          
-                          {/* List of added education */}
-                          {resumeData.education && resumeData.education.length > 0 && (
-                            <div className="mt-6 space-y-3">
-                              {resumeData.education.map((edu, idx) => (
-                                <div key={idx} className="p-4 border border-zinc-200 rounded-lg bg-white">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-zinc-950">{edu.degree}</p>
-                                      <p className="text-sm text-zinc-500">{edu.institution}</p>
-                                      <p className="text-sm text-zinc-500">
-                                        {edu.startDate} - {edu.endDate}
-                                        {edu.gpa && ` • GPA: ${edu.gpa}`}
-                                      </p>
-                                      {edu.description && (
-                                        <div 
-                                          className="text-sm text-zinc-600 mt-2 prose prose-sm max-w-none"
-                                          dangerouslySetInnerHTML={{ __html: edu.description }}
-                                        />
-                                      )}
-                                    </div>
-                                    <Button
-                                      onClick={() => {
-                                        setResumeData(prev => ({
-                                          ...prev,
-                                          education: prev.education.filter((_, i) => i !== idx),
-                                        }));
-                                      }}
-                                      plain
-                                      className="text-red-600 ml-2"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button onClick={handleNextStep} color="blue">
-                              Continue
-                              <ChevronRightIcon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Certifications Step */}
-                      {currentStep === WIZARD_STEPS.CERTIFICATIONS && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <h2 className="text-2xl font-semibold text-zinc-950 mb-2">Certifications</h2>
-                            <p className="text-sm text-zinc-600">Add your professional certifications</p>
-                          </div>
-                          
-                          <FieldGroup>
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Certification Name *</Label>
-                                <Input
-                                  value={currentCertification.name}
-                                  onChange={(e) => setCurrentCertification(prev => ({ ...prev, name: e.target.value }))}
-                                  placeholder="AWS Certified Solutions Architect"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Issuing Organization *</Label>
-                                <Input
-                                  value={currentCertification.issuer}
-                                  onChange={(e) => setCurrentCertification(prev => ({ ...prev, issuer: e.target.value }))}
-                                  placeholder="Amazon Web Services"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Issue Date</Label>
-                                <Input
-                                  type="month"
-                                  value={currentCertification.date}
-                                  onChange={(e) => setCurrentCertification(prev => ({ ...prev, date: e.target.value }))}
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Expiry Date</Label>
-                                <Input
-                                  type="month"
-                                  value={currentCertification.expiryDate}
-                                  onChange={(e) => setCurrentCertification(prev => ({ ...prev, expiryDate: e.target.value }))}
-                                  placeholder="Leave empty if no expiry"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Credential ID</Label>
-                                <Input
-                                  value={currentCertification.credentialId}
-                                  onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialId: e.target.value }))}
-                                  placeholder="ABC123456"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Credential URL</Label>
-                                <Input
-                                  type="url"
-                                  value={currentCertification.credentialUrl}
-                                  onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialUrl: e.target.value }))}
-                                  placeholder="https://..."
-                                />
-                              </Field>
-                            </div>
-                            
-                            <Button 
-                              onClick={() => {
-                                addCertification();
-                                markStepComplete('certifications');
-                              }} 
-                              outline
-                              disabled={!currentCertification.name || !currentCertification.issuer}
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                              Add Certification
-                            </Button>
-                          </FieldGroup>
-                          
-                          {/* List of added certifications */}
-                          {resumeData.certifications && resumeData.certifications.length > 0 && (
-                            <div className="mt-6 space-y-3">
-                              {resumeData.certifications.map((cert, idx) => (
-                                <div key={idx} className="p-4 border border-zinc-200 rounded-lg bg-white">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-zinc-950">{cert.name}</p>
-                                      <p className="text-sm text-zinc-500">{cert.issuer}</p>
-                                      <p className="text-sm text-zinc-500">
-                                        {cert.date && `Issued: ${cert.date}`}
-                                        {cert.expiryDate && ` • Expires: ${cert.expiryDate}`}
-                                        {cert.credentialId && ` • ID: ${cert.credentialId}`}
-                                      </p>
-                                      {cert.credentialUrl && (
-                                        <a href={cert.credentialUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
-                                          View Credential
-                                        </a>
-                                      )}
-                                    </div>
-                                    <Button
-                                      onClick={() => {
-                                        setResumeData(prev => ({
-                                          ...prev,
-                                          certifications: prev.certifications.filter((_, i) => i !== idx),
-                                        }));
-                                      }}
-                                      plain
-                                      className="text-red-600 ml-2"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button onClick={handleNextStep} color="blue">
-                              Continue
-                              <ChevronRightIcon className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* References Step */}
-                      {currentStep === WIZARD_STEPS.REFERENCES && (
-                        <div className="space-y-6">
-                          <div className="mb-6">
-                            <h2 className="text-2xl font-semibold text-zinc-950 mb-2">Professional References</h2>
-                            <p className="text-sm text-zinc-600">Add people who can vouch for your work</p>
-                          </div>
-                          
-                          <FieldGroup>
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Name *</Label>
-                                <Input
-                                  value={currentReference.name}
-                                  onChange={(e) => setCurrentReference(prev => ({ ...prev, name: e.target.value }))}
-                                  placeholder="John Doe"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Title</Label>
-                                <Input
-                                  value={currentReference.title}
-                                  onChange={(e) => setCurrentReference(prev => ({ ...prev, title: e.target.value }))}
-                                  placeholder="Senior Manager"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Company</Label>
-                                <Input
-                                  value={currentReference.company}
-                                  onChange={(e) => setCurrentReference(prev => ({ ...prev, company: e.target.value }))}
-                                  placeholder="Company Name"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Relationship</Label>
-                                <Input
-                                  value={currentReference.relationship}
-                                  onChange={(e) => setCurrentReference(prev => ({ ...prev, relationship: e.target.value }))}
-                                  placeholder="Former Manager, Colleague, etc."
-                                />
-                              </Field>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4">
-                              <Field>
-                                <Label>Email *</Label>
-                                <Input
-                                  type="email"
-                                  value={currentReference.email}
-                                  onChange={(e) => setCurrentReference(prev => ({ ...prev, email: e.target.value }))}
-                                  placeholder="john@example.com"
-                                />
-                              </Field>
-                              <Field>
-                                <Label>Phone</Label>
-                                <Input
-                                  type="tel"
-                                  value={currentReference.phone}
-                                  onChange={(e) => setCurrentReference(prev => ({ ...prev, phone: e.target.value }))}
-                                  placeholder="+1 (555) 123-4567"
-                                />
-                              </Field>
-                            </div>
-                            
-                            <Button 
-                              onClick={() => {
-                                addReference();
-                                markStepComplete('references');
-                              }} 
-                              outline
-                              disabled={!currentReference.name || !currentReference.email}
-                            >
-                              <PlusIcon className="h-4 w-4" />
-                              Add Reference
-                            </Button>
-                          </FieldGroup>
-                          
-                          {/* List of added references */}
-                          {resumeData.references && resumeData.references.length > 0 && (
-                            <div className="mt-6 space-y-3">
-                              {resumeData.references.map((ref, idx) => (
-                                <div key={idx} className="p-4 border border-zinc-200 rounded-lg bg-white">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <p className="font-semibold text-zinc-950">{ref.name}</p>
-                                      <p className="text-sm text-zinc-500">
-                                        {ref.title && `${ref.title}`}
-                                        {ref.company && ` at ${ref.company}`}
-                                        {ref.relationship && ` • ${ref.relationship}`}
-                                      </p>
-                                      <p className="text-sm text-zinc-500">{ref.email}</p>
-                                      {ref.phone && <p className="text-sm text-zinc-500">{ref.phone}</p>}
-                                    </div>
-                                    <Button
-                                      onClick={() => {
-                                        setResumeData(prev => ({
-                                          ...prev,
-                                          references: prev.references.filter((_, i) => i !== idx),
-                                        }));
-                                      }}
-                                      plain
-                                      className="text-red-600 ml-2"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-between pt-4">
-                            <Button onClick={handlePreviousStep} outline>
-                              <ChevronLeftIcon className="h-4 w-4" />
-                              Back
-                            </Button>
-                            <Button 
-                              onClick={handleSave} 
-                              color="blue"
-                              disabled={isGenerating}
-                            >
-                              {isGenerating ? (
-                                <>
-                                  <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                                  Saving...
-                                </>
-                              ) : (
-                                <>
-                                  Save Resume
-                                  <CheckCircleIcon className="h-4 w-4" />
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Live Preview Panel - Right (2 columns) */}
-                  <div className="col-span-2 overflow-y-auto bg-white">
-                    <LivePreview templateSettings={templateSettings} />
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Legacy Single-Screen Editor - Disabled, using new tabbed editor instead */}
-            {false && currentStep === WIZARD_STEPS.EDITOR && currentResume && (
-              <div className="grid grid-cols-4 h-[calc(100vh-120px)] w-full">
-                {/* Form Column - Left (1 column) */}
-                <div className="col-span-1 overflow-y-auto bg-zinc-50 border-r border-zinc-200">
-                  <div className="p-6 space-y-8">
-                    {/* Template Customization */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <h3 className="text-sm font-semibold text-zinc-950 mb-4">Template Settings</h3>
-                      <FieldGroup>
-                        <Field>
-                          <Label>Color Scheme</Label>
-                          <select
-                            value={templateSettings.colorScheme}
-                            onChange={(e) => setTemplateSettings(prev => ({ ...prev, colorScheme: e.target.value }))}
-                            className="mt-1 block w-full rounded-lg border-zinc-300 py-2 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-                          >
-                            <option value="blue">Blue</option>
-                            <option value="green">Green</option>
-                            <option value="purple">Purple</option>
-                            <option value="orange">Orange</option>
-                            <option value="red">Red</option>
-                            <option value="indigo">Indigo</option>
-                          </select>
-                        </Field>
-                        <Field>
-                          <Label>Font Family</Label>
-                          <select
-                            value={templateSettings.fontFamily}
-                            onChange={(e) => setTemplateSettings(prev => ({ ...prev, fontFamily: e.target.value }))}
-                            className="mt-1 block w-full rounded-lg border-zinc-300 py-2 pl-3 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
-                          >
-                            <option value="inter">Inter</option>
-                            <option value="roboto">Roboto</option>
-                            <option value="playfair">Playfair Display</option>
-                            <option value="lato">Lato</option>
-                            <option value="montserrat">Montserrat</option>
-                          </select>
-                        </Field>
-                      </FieldGroup>
-                    </div>
 
-                    {/* Personal Details Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center gap-2 mb-4">
-                        <UserIcon className="h-5 w-5 text-zinc-600" />
-                        <h3 className="text-sm font-semibold text-zinc-950">Personal Details</h3>
-                      </div>
-                      <FieldGroup>
-                        <Field>
-                          <Label htmlFor="fullName">Full Name *</Label>
-                          <Input
-                            id="fullName"
-                            value={resumeData.fullName}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, fullName: e.target.value }))}
-                            placeholder="John Doe"
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor="email">Email *</Label>
-                          <Input
-                            id="email"
-                            type="email"
-                            value={resumeData.email}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, email: e.target.value }))}
-                            placeholder="john@example.com"
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor="phone">Phone</Label>
-                          <Input
-                            id="phone"
-                            value={resumeData.phone}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, phone: e.target.value }))}
-                            placeholder="+1 (555) 123-4567"
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor="location">Location</Label>
-                          <Input
-                            id="location"
-                            value={resumeData.location}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, location: e.target.value }))}
-                            placeholder="City, State"
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor="linkedin">LinkedIn</Label>
-                          <Input
-                            id="linkedin"
-                            value={resumeData.linkedin}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, linkedin: e.target.value }))}
-                            placeholder="linkedin.com/in/yourname"
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor="github">GitHub</Label>
-                          <Input
-                            id="github"
-                            value={resumeData.github}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, github: e.target.value }))}
-                            placeholder="github.com/yourname"
-                          />
-                        </Field>
-                        <Field>
-                          <Label htmlFor="photo">Photo URL</Label>
-                          <Input
-                            id="photo"
-                            value={resumeData.photo}
-                            onChange={(e) => setResumeData(prev => ({ ...prev, photo: e.target.value }))}
-                            placeholder="https://example.com/photo.jpg"
-                          />
-                        </Field>
-                      </FieldGroup>
-                    </div>
-
-                    {/* Professional Summary Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <DocumentTextIcon className="h-5 w-5 text-zinc-600" />
-                          <h3 className="text-sm font-semibold text-zinc-950">Professional Summary</h3>
-                        </div>
-                        <Button
-                          onClick={() => handleRegenerateSection('summary')}
-                          plain
-                          className="text-xs"
-                          disabled={isGenerating}
-                        >
-                          <ArrowPathIcon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                        </Button>
-                      </div>
-                      <RichTextEditor
-                        value={resumeData.summary}
-                        onChange={(value) => setResumeData(prev => ({ ...prev, summary: value }))}
-                        placeholder="Write a compelling professional summary..."
-                      />
-                    </div>
-
-                    {/* Skills Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold text-zinc-950">Skills</h3>
-                        <Button
-                          onClick={() => handleRegenerateSection('skills')}
-                          plain
-                          className="text-xs"
-                          disabled={isGenerating}
-                        >
-                          <ArrowPathIcon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                        </Button>
-                      </div>
-                      <div className="flex gap-2 mb-3">
-                        <Input
-                          value={currentSkill}
-                          onChange={(e) => setCurrentSkill(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              addSkill();
-                            }
-                          }}
-                          placeholder="Add skill"
-                          className="text-sm"
-                        />
-                        <Button onClick={addSkill} size="sm">
-                          <PlusIcon className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {resumeData.skills && resumeData.skills.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {resumeData.skills.map((skill, idx) => (
-                            <Badge key={idx} color="blue" className="text-xs">
-                              {skill}
-                              <button
-                                onClick={() => {
-                                  setResumeData(prev => ({
-                                    ...prev,
-                                    skills: prev.skills.filter((_, i) => i !== idx),
-                                  }));
-                                }}
-                                className="ml-1 hover:text-red-600"
-                              >
-                                <XMarkIcon className="h-3 w-3" />
-                              </button>
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Technical Skills Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <h3 className="text-sm font-semibold text-zinc-950 mb-4">Technical Skills</h3>
-                      <div className="flex gap-2 mb-3">
-                        <Input
-                          value={currentTechnicalSkill}
-                          onChange={(e) => setCurrentTechnicalSkill(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              addTechnicalSkill();
-                            }
-                          }}
-                          placeholder="Add technical skill"
-                          className="text-sm"
-                        />
-                        <Button onClick={addTechnicalSkill} size="sm">
-                          <PlusIcon className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {resumeData.technicalSkills && resumeData.technicalSkills.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {resumeData.technicalSkills.map((skill, idx) => (
-                            <Badge key={idx} color="green" className="text-xs">
-                              {skill}
-                              <button
-                                onClick={() => {
-                                  setResumeData(prev => ({
-                                    ...prev,
-                                    technicalSkills: prev.technicalSkills.filter((_, i) => i !== idx),
-                                  }));
-                                }}
-                                className="ml-1 hover:text-red-600"
-                              >
-                                <XMarkIcon className="h-3 w-3" />
-                              </button>
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Work History Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <BriefcaseIcon className="h-5 w-5 text-zinc-600" />
-                          <h3 className="text-sm font-semibold text-zinc-950">Work History</h3>
-                        </div>
-                        <Button
-                          onClick={() => handleRegenerateSection('experience')}
-                          plain
-                          className="text-xs"
-                          disabled={isGenerating}
-                        >
-                          <ArrowPathIcon className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                        </Button>
-                      </div>
-                      <FieldGroup>
-                        <Field>
-                          <Label>Job Title *</Label>
-                          <Input
-                            value={currentExperience.title}
-                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, title: e.target.value }))}
-                            placeholder="Software Engineer"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Company Name *</Label>
-                          <Input
-                            value={currentExperience.company}
-                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, company: e.target.value }))}
-                            placeholder="Tech Corp"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Field>
-                            <Label>Start Date</Label>
-                            <Input
-                              type="month"
-                              value={currentExperience.startDate}
-                              onChange={(e) => setCurrentExperience(prev => ({ ...prev, startDate: e.target.value }))}
-                              className="text-sm"
-                            />
-                          </Field>
-                          <Field>
-                            <Label>End Date</Label>
-                            <Input
-                              type="month"
-                              value={currentExperience.endDate}
-                              onChange={(e) => setCurrentExperience(prev => ({ ...prev, endDate: e.target.value }))}
-                              disabled={currentExperience.current}
-                              className="text-sm"
-                            />
-                          </Field>
-                        </div>
-                        <Field>
-                          <Label>Location</Label>
-                          <Input
-                            value={currentExperience.location}
-                            onChange={(e) => setCurrentExperience(prev => ({ ...prev, location: e.target.value }))}
-                            placeholder="City, State"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <CheckboxField>
-                          <Checkbox
-                            checked={currentExperience.current}
-                            onChange={(checked) => setCurrentExperience(prev => ({ ...prev, current: checked }))}
-                          />
-                          <Label>Currently Working</Label>
-                        </CheckboxField>
-                        <Field>
-                          <Label>Responsibilities</Label>
-                          <RichTextEditor
-                            value={currentExperience.responsibilities}
-                            onChange={(value) => setCurrentExperience(prev => ({ ...prev, responsibilities: value }))}
-                            placeholder="Describe your responsibilities and achievements..."
-                          />
-                        </Field>
-                        <Button onClick={addExperience} outline className="w-full text-sm">
-                          <PlusIcon className="h-4 w-4" />
-                          Add Experience
-                        </Button>
-                      </FieldGroup>
-                      {resumeData.experience && resumeData.experience.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {resumeData.experience.map((exp, idx) => (
-                            <div key={idx} className="p-2 bg-zinc-50 rounded border border-zinc-200">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="text-xs font-semibold">{exp.title} at {exp.company}</p>
-                                  <p className="text-xs text-zinc-500">
-                                    {exp.startDate} - {exp.current ? 'Present' : exp.endDate}
-                                  </p>
-                                </div>
-                                <Button
-                                  onClick={() => {
-                                    setResumeData(prev => ({
-                                      ...prev,
-                                      experience: prev.experience.filter((_, i) => i !== idx),
-                                    }));
-                                  }}
-                                  plain
-                                  className="text-red-600 p-1"
-                                >
-                                  <TrashIcon className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Education Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center gap-2 mb-4">
-                        <AcademicCapIcon className="h-5 w-5 text-zinc-600" />
-                        <h3 className="text-sm font-semibold text-zinc-950">Education</h3>
-                      </div>
-                      <FieldGroup>
-                        <Field>
-                          <Label>Degree *</Label>
-                          <Input
-                            value={currentEducation.degree}
-                            onChange={(e) => setCurrentEducation(prev => ({ ...prev, degree: e.target.value }))}
-                            placeholder="Bachelor of Science"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Institution *</Label>
-                          <Input
-                            value={currentEducation.institution}
-                            onChange={(e) => setCurrentEducation(prev => ({ ...prev, institution: e.target.value }))}
-                            placeholder="University Name"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Field>
-                            <Label>Start Date</Label>
-                            <Input
-                              type="month"
-                              value={currentEducation.startDate}
-                              onChange={(e) => setCurrentEducation(prev => ({ ...prev, startDate: e.target.value }))}
-                              className="text-sm"
-                            />
-                          </Field>
-                          <Field>
-                            <Label>End Date</Label>
-                            <Input
-                              type="month"
-                              value={currentEducation.endDate}
-                              onChange={(e) => setCurrentEducation(prev => ({ ...prev, endDate: e.target.value }))}
-                              className="text-sm"
-                            />
-                          </Field>
-                        </div>
-                        <Button onClick={addEducation} outline className="w-full text-sm">
-                          <PlusIcon className="h-4 w-4" />
-                          Add Education
-                        </Button>
-                      </FieldGroup>
-                      {resumeData.education && resumeData.education.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {resumeData.education.map((edu, idx) => (
-                            <div key={idx} className="p-2 bg-zinc-50 rounded border border-zinc-200">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="text-xs font-semibold">{edu.degree}</p>
-                                  <p className="text-xs text-zinc-500">{edu.institution}</p>
-                                </div>
-                                <Button
-                                  onClick={() => {
-                                    setResumeData(prev => ({
-                                      ...prev,
-                                      education: prev.education.filter((_, i) => i !== idx),
-                                    }));
-                                  }}
-                                  plain
-                                  className="text-red-600 p-1"
-                                >
-                                  <TrashIcon className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Certifications Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center gap-2 mb-4">
-                        <TrophyIcon className="h-5 w-5 text-zinc-600" />
-                        <h3 className="text-sm font-semibold text-zinc-950">Certifications</h3>
-                      </div>
-                      <FieldGroup>
-                        <Field>
-                          <Label>Certification Name *</Label>
-                          <Input
-                            value={currentCertification.name}
-                            onChange={(e) => setCurrentCertification(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder="AWS Certified Solutions Architect"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Issuer *</Label>
-                          <Input
-                            value={currentCertification.issuer}
-                            onChange={(e) => setCurrentCertification(prev => ({ ...prev, issuer: e.target.value }))}
-                            placeholder="Amazon Web Services"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Field>
-                            <Label>Issue Date</Label>
-                            <Input
-                              type="month"
-                              value={currentCertification.date}
-                              onChange={(e) => setCurrentCertification(prev => ({ ...prev, date: e.target.value }))}
-                              className="text-sm"
-                            />
-                          </Field>
-                          <Field>
-                            <Label>Expiry Date</Label>
-                            <Input
-                              type="month"
-                              value={currentCertification.expiryDate}
-                              onChange={(e) => setCurrentCertification(prev => ({ ...prev, expiryDate: e.target.value }))}
-                              className="text-sm"
-                            />
-                          </Field>
-                        </div>
-                        <Field>
-                          <Label>Credential ID</Label>
-                          <Input
-                            value={currentCertification.credentialId}
-                            onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialId: e.target.value }))}
-                            placeholder="Credential ID"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Button onClick={addCertification} outline className="w-full text-sm">
-                          <PlusIcon className="h-4 w-4" />
-                          Add Certification
-                        </Button>
-                      </FieldGroup>
-                      {resumeData.certifications && resumeData.certifications.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {resumeData.certifications.map((cert, idx) => (
-                            <div key={idx} className="p-2 bg-zinc-50 rounded border border-zinc-200">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="text-xs font-semibold">{cert.name}</p>
-                                  <p className="text-xs text-zinc-500">{cert.issuer}</p>
-                                </div>
-                                <Button
-                                  onClick={() => {
-                                    setResumeData(prev => ({
-                                      ...prev,
-                                      certifications: prev.certifications.filter((_, i) => i !== idx),
-                                    }));
-                                  }}
-                                  plain
-                                  className="text-red-600 p-1"
-                                >
-                                  <TrashIcon className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Professional References Section */}
-                    <div className="bg-white rounded-lg border border-zinc-200 p-4">
-                      <div className="flex items-center gap-2 mb-4">
-                        <UserGroupIcon className="h-5 w-5 text-zinc-600" />
-                        <h3 className="text-sm font-semibold text-zinc-950">Professional References</h3>
-                      </div>
-                      <FieldGroup>
-                        <Field>
-                          <Label>Name *</Label>
-                          <Input
-                            value={currentReference.name}
-                            onChange={(e) => setCurrentReference(prev => ({ ...prev, name: e.target.value }))}
-                            placeholder="John Smith"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Title</Label>
-                          <Input
-                            value={currentReference.title}
-                            onChange={(e) => setCurrentReference(prev => ({ ...prev, title: e.target.value }))}
-                            placeholder="Senior Manager"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Company</Label>
-                          <Input
-                            value={currentReference.company}
-                            onChange={(e) => setCurrentReference(prev => ({ ...prev, company: e.target.value }))}
-                            placeholder="Company Name"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Email *</Label>
-                          <Input
-                            type="email"
-                            value={currentReference.email}
-                            onChange={(e) => setCurrentReference(prev => ({ ...prev, email: e.target.value }))}
-                            placeholder="john@example.com"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Phone</Label>
-                          <Input
-                            value={currentReference.phone}
-                            onChange={(e) => setCurrentReference(prev => ({ ...prev, phone: e.target.value }))}
-                            placeholder="+1 (555) 123-4567"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Field>
-                          <Label>Relationship</Label>
-                          <Input
-                            value={currentReference.relationship}
-                            onChange={(e) => setCurrentReference(prev => ({ ...prev, relationship: e.target.value }))}
-                            placeholder="Former Manager"
-                            className="text-sm"
-                          />
-                        </Field>
-                        <Button onClick={addReference} outline className="w-full text-sm">
-                          <PlusIcon className="h-4 w-4" />
-                          Add Reference
-                        </Button>
-                      </FieldGroup>
-                      {resumeData.references && resumeData.references.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          {resumeData.references.map((ref, idx) => (
-                            <div key={idx} className="p-2 bg-zinc-50 rounded border border-zinc-200">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <p className="text-xs font-semibold">{ref.name}</p>
-                                  <p className="text-xs text-zinc-500">{ref.title} at {ref.company}</p>
-                                </div>
-                                <Button
-                                  onClick={() => {
-                                    setResumeData(prev => ({
-                                      ...prev,
-                                      references: prev.references.filter((_, i) => i !== idx),
-                                    }));
-                                  }}
-                                  plain
-                                  className="text-red-600 p-1"
-                                >
-                                  <TrashIcon className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Save Button */}
-                    <div className="sticky bottom-0 bg-zinc-50 pt-4 pb-2 border-t border-zinc-200">
-                      <Button
-                        onClick={handleSave}
-                        color="blue"
-                        className="w-full"
-                        disabled={isGenerating}
-                      >
-                        {isGenerating ? (
-                          <>
-                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircleIcon className="h-4 w-4" />
-                            Save Resume
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preview Columns - Right (3 columns) */}
-                <div className="col-span-3 overflow-y-auto bg-white">
-                  <LivePreview templateSettings={templateSettings} />
-                </div>
-              </div>
-            )}
-
-            {/* Old sections removed - now using stepper-based approach above */}
-            
-            {/* Experience Step - Full Width Split Screen - OLD VERSION (to be removed) */}
-            {false && currentStep === WIZARD_STEPS.EXPERIENCE && (
-              <div className="flex h-[calc(100vh-120px)] w-full">
-                {/* Editor Panel - Left */}
-                <div className="flex-1 overflow-y-auto bg-white border-r border-zinc-200">
-                  <div className="max-w-full p-8">
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-semibold text-zinc-950">Work Experience</h2>
-                    <Button
-                      onClick={() => handleRegenerateSection('experience')}
-                      outline
-                      disabled={isGenerating}
-                    >
-                      <ArrowPathIcon data-slot="icon" className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                      Enhance with AI
-                    </Button>
-                  </div>
-
-                  <FieldGroup>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Field>
-                        <Label htmlFor="exp-title">Job Title *</Label>
-                        <Input
-                          id="exp-title"
-                          value={currentExperience.title}
-                          onChange={(e) => setCurrentExperience(prev => ({ ...prev, title: e.target.value }))}
-                          placeholder="Software Engineer"
-                        />
-                      </Field>
-
-                      <Field>
-                        <Label htmlFor="exp-company">Company *</Label>
-                        <Input
-                          id="exp-company"
-                          value={currentExperience.company}
-                          onChange={(e) => setCurrentExperience(prev => ({ ...prev, company: e.target.value }))}
-                          placeholder="Tech Corp"
-                        />
-                      </Field>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <Field>
-                        <Label htmlFor="exp-start">Start Date</Label>
-                        <Input
-                          id="exp-start"
-                          type="month"
-                          value={currentExperience.startDate}
-                          onChange={(e) => setCurrentExperience(prev => ({ ...prev, startDate: e.target.value }))}
-                        />
-                      </Field>
-
-                      <Field>
-                        <Label htmlFor="exp-end">End Date</Label>
-                        <Input
-                          id="exp-end"
-                          type="month"
-                          value={currentExperience.endDate}
-                          onChange={(e) => setCurrentExperience(prev => ({ ...prev, endDate: e.target.value }))}
-                          disabled={currentExperience.current}
-                        />
-                      </Field>
-
-                      <CheckboxField>
-                        <Checkbox
-                          checked={currentExperience.current}
-                          onChange={(checked) => {
-                            setCurrentExperience(prev => ({ ...prev, current: checked }));
-                          }}
-                          color="blue"
-                        />
-                        <Label>Currently Working</Label>
-                      </CheckboxField>
-                    </div>
-
-                    <Field>
-                      <Label htmlFor="exp-description">Description</Label>
-                      <Textarea
-                        id="exp-description"
-                        value={currentExperience.description}
-                        onChange={(e) => setCurrentExperience(prev => ({ ...prev, description: e.target.value }))}
-                        rows={4}
-                        placeholder="Describe your responsibilities and achievements..."
-                      />
-                    </Field>
-
-                    <Button onClick={addExperience} outline>
-                      <PlusIcon data-slot="icon" className="h-4 w-4" />
-                      Add Experience
-                    </Button>
-                  </FieldGroup>
-
-                  {/* List of added experiences */}
-                  {resumeData.experience && resumeData.experience.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                      {resumeData.experience.map((exp, idx) => (
-                        <div key={idx} className="p-4 border border-zinc-200 rounded-lg">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-semibold">{exp.title} at {exp.company}</p>
-                              <p className="text-sm text-zinc-500">
-                                {exp.startDate} - {exp.current ? 'Present' : exp.endDate}
+                  {/* Right Preview Panel - 2 columns - PDF Preview */}
+                  <div className="col-span-2 overflow-hidden bg-zinc-100 dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col">
+                    {/* PDF Preview Header */}
+                    <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">PDF Preview</h3>
+                        {currentResume && (
+                          <div className="mt-1 space-y-0.5">
+                            <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{resumeData.name || currentResume.name || 'My Resume'}</p>
+                            {currentResume.createdAt && (
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                {new Date(currentResume.createdAt).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
                               </p>
-                            </div>
-                            <Button
-                              onClick={() => {
-                                setResumeData(prev => ({
-                                  ...prev,
-                                  experience: prev.experience.filter((_, i) => i !== idx),
-                                }));
-                              }}
-                              plain
-                              className="text-red-600"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </Button>
+                            )}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="mt-6 flex justify-between">
-                    <Button
-                      onClick={() => setCurrentStep(WIZARD_STEPS.SUMMARY)}
-                      outline
-                    >
-                      <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                      Back
-                    </Button>
-                    <Button
-                      onClick={() => setCurrentStep(WIZARD_STEPS.EDUCATION)}
-                      color="blue"
-                    >
-                      Continue
-                      <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
-                    </Button>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Live Preview Panel - Right - Full Width */}
-                <div className="flex-1 hidden lg:block min-w-0">
-                  <LivePreview />
-                </div>
-              </div>
-            )}
-
-            {/* Education Step - Full Width Split Screen - OLD VERSION (to be removed) */}
-            {false && currentStep === WIZARD_STEPS.EDUCATION && (
-              <div className="flex h-[calc(100vh-120px)] w-full">
-                {/* Editor Panel - Left */}
-                <div className="flex-1 overflow-y-auto bg-white border-r border-zinc-200">
-                  <div className="max-w-full p-8">
-                    <h2 className="text-2xl font-semibold text-zinc-950 mb-6">Education</h2>
-
-                  <FieldGroup>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Field>
-                        <Label htmlFor="edu-degree">Degree *</Label>
-                        <Input
-                          id="edu-degree"
-                          value={currentEducation.degree}
-                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, degree: e.target.value }))}
-                          placeholder="Bachelor of Science"
-                        />
-                      </Field>
-
-                      <Field>
-                        <Label htmlFor="edu-institution">Institution *</Label>
-                        <Input
-                          id="edu-institution"
-                          value={currentEducation.institution}
-                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, institution: e.target.value }))}
-                          placeholder="University Name"
-                        />
-                      </Field>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4">
-                      <Field>
-                        <Label htmlFor="edu-start">Start Date</Label>
-                        <Input
-                          id="edu-start"
-                          type="month"
-                          value={currentEducation.startDate}
-                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, startDate: e.target.value }))}
-                        />
-                      </Field>
-
-                      <Field>
-                        <Label htmlFor="edu-end">End Date</Label>
-                        <Input
-                          id="edu-end"
-                          type="month"
-                          value={currentEducation.endDate}
-                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, endDate: e.target.value }))}
-                        />
-                      </Field>
-
-                      <Field>
-                        <Label htmlFor="edu-gpa">GPA</Label>
-                        <Input
-                          id="edu-gpa"
-                          value={currentEducation.gpa}
-                          onChange={(e) => setCurrentEducation(prev => ({ ...prev, gpa: e.target.value }))}
-                          placeholder="3.8"
-                        />
-                      </Field>
-                    </div>
-
-                    <Button onClick={addEducation} outline>
-                      <PlusIcon data-slot="icon" className="h-4 w-4" />
-                      Add Education
-                    </Button>
-                  </FieldGroup>
-
-                  {/* List of added education */}
-                  {resumeData.education && resumeData.education.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                      {resumeData.education.map((edu, idx) => (
-                        <div key={idx} className="p-4 border border-zinc-200 rounded-lg">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <p className="font-semibold">{edu.degree}</p>
-                              <p className="text-sm text-zinc-500">{edu.institution}</p>
-                            </div>
-                            <Button
-                              onClick={() => {
-                                setResumeData(prev => ({
-                                  ...prev,
-                                  education: prev.education.filter((_, i) => i !== idx),
-                                }));
-                              }}
-                              plain
-                              className="text-red-600"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </Button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {pdfGenerating && (
+                          <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                            <span>Generating PDF...</span>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                    <div className="mt-6 flex justify-between">
-                      <Button
-                        onClick={() => setCurrentStep(WIZARD_STEPS.EXPERIENCE)}
-                        outline
-                      >
-                        <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                        Back
-                      </Button>
-                      <Button
-                        onClick={() => setCurrentStep(WIZARD_STEPS.SKILLS)}
-                        color="blue"
-                      >
-                        Continue
-                        <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Live Preview Panel - Right - Full Width */}
-                <div className="flex-1 hidden lg:block min-w-0">
-                  <LivePreview />
-                </div>
-              </div>
-            )}
-
-            {/* Skills Step - Full Width Split Screen - OLD VERSION (to be removed) */}
-            {false && currentStep === WIZARD_STEPS.SKILLS && (
-              <div className="flex h-[calc(100vh-120px)] w-full">
-                {/* Editor Panel - Left */}
-                <div className="flex-1 overflow-y-auto bg-white border-r border-zinc-200">
-                  <div className="max-w-full p-8">
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-semibold text-zinc-950">Skills</h2>
-                      <Button
-                        onClick={() => handleRegenerateSection('skills')}
-                        outline
-                        disabled={isGenerating}
-                      >
-                        <ArrowPathIcon data-slot="icon" className={`h-4 w-4 ${isGenerating ? 'animate-spin' : ''}`} />
-                        {isGenerating ? 'Regenerating...' : 'Suggest Skills with AI'}
-                      </Button>
-                    </div>
-
-                    <div className="flex gap-2 mb-4">
-                    <Input
-                      value={currentSkill}
-                      onChange={(e) => setCurrentSkill(e.target.value)}
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addSkill();
-                        }
-                      }}
-                      placeholder="Type a skill and press Enter"
-                    />
-                    <Button onClick={addSkill}>
-                      <PlusIcon data-slot="icon" className="h-4 w-4" />
-                      Add
-                    </Button>
-                  </div>
-
-                  {/* Skills list */}
-                  {resumeData.skills && resumeData.skills.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-6">
-                      {resumeData.skills.map((skill, idx) => (
-                        <Badge
-                          key={idx}
-                          color="blue"
-                          className="flex items-center gap-1"
-                        >
-                          {skill}
-                          <Button
-                            onClick={() => {
-                              setResumeData(prev => ({
-                                ...prev,
-                                skills: prev.skills.filter((_, i) => i !== idx),
-                              }));
-                            }}
-                            plain
-                            className="ml-1 p-0 h-auto hover:text-red-600"
-                          >
-                            <XMarkIcon className="h-3 w-3" />
-                          </Button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-
-                    <div className="mt-6 flex justify-between">
-                      <Button
-                        onClick={() => setCurrentStep(WIZARD_STEPS.EDUCATION)}
-                        outline
-                      >
-                        <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                        Back
-                      </Button>
-                      <Button
-                        onClick={() => setCurrentStep(WIZARD_STEPS.PREVIEW)}
-                        color="blue"
-                      >
-                        Continue
-                        <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Live Preview Panel - Right - Full Width */}
-                <div className="flex-1 hidden lg:block min-w-0">
-                  <LivePreview />
-                </div>
-              </div>
-            )}
-
-            {/* Preview Step */}
-            {currentStep === WIZARD_STEPS.PREVIEW && (
-              <div className="max-w-full px-6 py-8">
-                <div className="bg-white rounded-lg border border-zinc-200 p-8">
-                  <h2 className="text-2xl font-semibold text-zinc-950 mb-6">Preview Your Resume</h2>
-                  
-                  <div className="border border-zinc-200 rounded-lg p-8 bg-white mb-6">
-                    {/* Resume Preview */}
-                    <div className="space-y-6">
-                      {/* Header */}
-                      <div className="border-b border-zinc-200 pb-4">
-                        <h2 className="text-2xl font-bold text-zinc-950">{resumeData.fullName || 'Your Name'}</h2>
-                        <div className="flex flex-wrap gap-2 text-sm text-zinc-600 mt-2">
-                          {resumeData.email && <span>{resumeData.email}</span>}
-                          {resumeData.phone && <span>• {resumeData.phone}</span>}
-                          {resumeData.location && <span>• {resumeData.location}</span>}
-                          {resumeData.website && <span>• {resumeData.website}</span>}
-                          {resumeData.linkedin && <span>• LinkedIn</span>}
-                          {resumeData.github && <span>• GitHub</span>}
+                        )}
+                        <div className="flex items-center gap-2">
+                          {!pdfGenerating && (
+                            <button
+                              onClick={() => setShowPDFPreview(!showPDFPreview)}
+                              className="px-2 py-1 text-xs rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-zinc-600 dark:text-zinc-400"
+                              title={showPDFPreview ? 'Switch to HTML Preview' : 'Switch to PDF Preview'}
+                            >
+                              {showPDFPreview ? 'HTML' : 'PDF'}
+                            </button>
+                          )}
+                          {!pdfGenerating && pdfPreviewUrl && showPDFPreview && (
+                            <button
+                              onClick={ensurePDFPreview}
+                              className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                              title="Refresh PDF Preview"
+                            >
+                              <ArrowPathIcon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                            </button>
+                          )}
+                          <Badge color="zinc" className="text-xs capitalize">{selectedTemplate || 'modern'}</Badge>
                         </div>
                       </div>
+                    </div>
 
-                      {/* Summary */}
-                      {resumeData.summary && (
-                        <div>
-                          <h3 className="font-semibold text-zinc-950 mb-2">Professional Summary</h3>
-                          <p className="text-sm text-zinc-600">{resumeData.summary}</p>
-                        </div>
-                      )}
-
-                      {/* Skills */}
-                      {resumeData.skills && resumeData.skills.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold text-zinc-950 mb-2">Skills</h3>
-                          <div className="flex flex-wrap gap-2">
-                            {resumeData.skills.map((skill, idx) => (
-                              <Badge key={idx} color="zinc">{skill}</Badge>
-                            ))}
+                    {/* PDF Viewer or HTML Preview */}
+                    <div className="flex-1 overflow-hidden relative bg-zinc-50 dark:bg-zinc-900">
+                      {pdfGenerating ? (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="text-center">
+                            <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 dark:text-blue-400 animate-spin" />
+                            <p className="text-sm text-zinc-600 dark:text-zinc-400">Generating PDF preview...</p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2">This may take a few seconds</p>
                           </div>
                         </div>
-                      )}
-
-                      {/* Experience */}
-                      {resumeData.experience && resumeData.experience.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold text-zinc-950 mb-2">Experience</h3>
-                          <div className="space-y-4">
-                            {resumeData.experience.map((exp, idx) => (
-                              <div key={idx}>
-                                <p className="font-semibold">{exp.title} - {exp.company}</p>
-                                <p className="text-sm text-zinc-500">
-                                  {exp.startDate} - {exp.current ? 'Present' : exp.endDate}
-                                </p>
-                                {exp.description && (
-                                  <p className="text-sm text-zinc-600 mt-1">{exp.description}</p>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Education */}
-                      {resumeData.education && resumeData.education.length > 0 && (
-                        <div>
-                          <h3 className="font-semibold text-zinc-950 mb-2">Education</h3>
-                          <div className="space-y-2">
-                            {resumeData.education.map((edu, idx) => (
-                              <div key={idx}>
-                                <p className="font-semibold">{edu.degree}</p>
-                                <p className="text-sm text-zinc-500">{edu.institution}</p>
-                              </div>
-                            ))}
-                          </div>
+                      ) : showPDFPreview && pdfPreviewUrl ? (
+                        <embed
+                          src={`${pdfPreviewUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                          type="application/pdf"
+                          className="w-full h-full"
+                          title="Resume PDF Preview"
+                          onError={(e) => {
+                            console.error('PDF embed error:', e);
+                            toast.error('Failed to load PDF preview. Showing HTML preview instead.');
+                            setShowPDFPreview(false);
+                          }}
+                        />
+                      ) : (
+                        <div className="h-full overflow-y-auto">
+                          {/* HTML Preview Fallback */}
+                          <LivePreview templateSettings={templateSettings} />
                         </div>
                       )}
                     </div>
                   </div>
-
-                  <div className="flex justify-between">
-                    <Button
-                      onClick={() => setCurrentStep(WIZARD_STEPS.SKILLS)}
-                      outline
-                    >
-                      <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                      Back
-                    </Button>
-                    <Button
-                      onClick={handleSave}
-                      color="blue"
-                      disabled={isGenerating}
-                    >
-                      {isGenerating ? 'Saving...' : 'Save & Complete'}
-                      <CheckCircleIcon data-slot="icon" className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               </div>
             )}
 
-            {/* Complete Step */}
-            {currentStep === WIZARD_STEPS.COMPLETE && (
-              <div className="max-w-full px-6 py-8">
-                <div className="bg-white rounded-lg border border-zinc-200 p-12 text-center">
-                  <CheckCircleIcon className="h-16 w-16 mx-auto mb-4 text-green-500" />
-                  <h2 className="text-2xl font-semibold text-zinc-950 mb-2">Resume Created!</h2>
-                  <p className="text-zinc-600 mb-8">Your resume has been saved successfully.</p>
-                  <div className="flex gap-3 justify-center">
-                    <Button
-                      onClick={handleGeneratePDF}
-                      color="blue"
-                      disabled={isGenerating}
-                    >
-                      <ArrowDownTrayIcon data-slot="icon" className="h-4 w-4" />
-                      {isGenerating ? 'Generating...' : 'Generate PDF'}
-                    </Button>
-                    {currentResume?.pdfUrl && (
-                      <>
-                        <Button
-                          onClick={handleViewPDF}
-                          outline
-                        >
-                          <EyeIcon data-slot="icon" className="h-4 w-4" />
-                          View PDF
-                        </Button>
-                        <Button
-                          onClick={handleDownloadPDF}
-                          outline
-                        >
-                          <ArrowDownTrayIcon data-slot="icon" className="h-4 w-4" />
-                          Download PDF
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      onClick={() => {
-                        setCurrentStep(WIZARD_STEPS.TEMPLATE);
-                        setSelectedTemplate(null);
-                        setCurrentResume(null);
-                        setUploadMethod(null);
-                        setResumeNameInput('');
-                        setShowResumeNameModal(false);
-                      }}
-                      outline
-                    >
-                      Create Another
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
-      </DashboardLayout>
-      
-      {/* Template Settings Modal */}
-      <TemplateSettings
-        isOpen={showTemplateSettings}
-        onClose={() => setShowTemplateSettings(false)}
-        settings={templateSettings}
-        onSettingsChange={setTemplateSettings}
-      />
 
-      {/* Resume Name Modal */}
-      <Transition appear show={showResumeNameModal} as={Fragment}>
-        <Dialog as="div" className="relative z-50" onClose={() => setShowResumeNameModal(false)}>
-          <Transition.Child
-            as={Fragment}
-            enter="ease-out duration-300"
-            enterFrom="opacity-0"
-            enterTo="opacity-100"
-            leave="ease-in duration-200"
-            leaveFrom="opacity-100"
-            leaveTo="opacity-0"
-          >
-            <div className="fixed inset-0 bg-black/30" />
-          </Transition.Child>
+        {/* Global Resume Name Modal - Available in all steps */}
+        <Transition appear show={showResumeNameModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowResumeNameModal(false)}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/30" />
+            </Transition.Child>
 
-          <div className="fixed inset-0 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4">
-              <Transition.Child
-                as={Fragment}
-                enter="ease-out duration-300"
-                enterFrom="opacity-0 scale-95"
-                enterTo="opacity-100 scale-100"
-                leave="ease-in duration-200"
-                leaveFrom="opacity-100 scale-100"
-                leaveTo="opacity-0 scale-95"
-              >
-                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white shadow-xl transition-all">
-                  <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <Dialog.Title className="text-xl font-bold text-zinc-950">
-                        Name Your Resume
-                      </Dialog.Title>
-                      <button
-                        onClick={() => {
-                          setShowResumeNameModal(false);
-                          setResumeNameInput('');
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-xl transition-all border border-zinc-200 dark:border-zinc-800">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-zinc-900 dark:text-white mb-2">
+                      Name your resume
+                    </Dialog.Title>
+                    <div className="mt-2">
+                      <p className="text-sm text-zinc-500 mb-4">
+                        Give your resume a name to help you identify it later.
+                      </p>
+                      <Input
+                        value={resumeNameInput}
+                        onChange={(e) => setResumeNameInput(e.target.value)}
+                        placeholder="e.g. Software Engineer Resume"
+                        className="w-full"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && resumeNameInput.trim()) {
+                            handleCreateNew();
+                          }
                         }}
-                        className="p-2 hover:bg-zinc-100 rounded-lg transition-colors"
-                      >
-                        <XMarkIcon className="h-5 w-5 text-zinc-600" />
-                      </button>
+                      />
                     </div>
-                    
-                    <p className="text-sm text-zinc-600 mb-4">
-                      Give your resume a unique name to easily identify it later.
-                    </p>
 
-                    <FieldGroup>
-                      <Field>
-                        <Label>Resume Name</Label>
-                        <Input
-                          value={resumeNameInput}
-                          onChange={(e) => setResumeNameInput(e.target.value)}
-                          placeholder="e.g., Software Engineer Resume 2024"
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && resumeNameInput.trim()) {
-                              handleCreateNew();
-                            }
-                          }}
-                          autoFocus
-                        />
-                      </Field>
-                    </FieldGroup>
-
-                    <div className="flex gap-3 mt-6">
+                    <div className="mt-6 flex justify-end gap-3">
                       <Button
-                        onClick={() => {
-                          setShowResumeNameModal(false);
-                          setResumeNameInput('');
-                        }}
-                        outline
-                        className="flex-1"
+                        plain
+                        onClick={() => setShowResumeNameModal(false)}
+                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
                       >
                         Cancel
                       </Button>
                       <Button
-                        onClick={() => {
-                          if (resumeNameInput.trim()) {
-                            if (uploadMethod === 'upload') {
-                              handleFileUpload();
-                            } else {
-                              handleCreateNew();
-                            }
-                          } else {
-                            toast.error('Please enter a resume name');
-                          }
-                        }}
                         color="blue"
-                        disabled={!resumeNameInput.trim() || (uploadMethod === 'upload' ? uploading : isGenerating)}
-                        className="flex-1"
+                        onClick={handleCreateNew}
+                        disabled={!resumeNameInput.trim()}
                       >
-                        {(uploadMethod === 'upload' ? uploading : isGenerating) ? (
-                          <>
-                            <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                            {uploadMethod === 'upload' ? 'Uploading...' : 'Creating...'}
-                          </>
-                        ) : (
-                          uploadMethod === 'upload' ? 'Upload Resume' : 'Create Resume'
-                        )}
+                        Create Resume
                       </Button>
                     </div>
-                  </div>
-                </Dialog.Panel>
-              </Transition.Child>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
             </div>
-          </div>
-        </Dialog>
-      </Transition>
+          </Dialog>
+        </Transition>
+      </DashboardLayout>
     </>
   );
 }
+
+

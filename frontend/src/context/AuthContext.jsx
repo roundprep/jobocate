@@ -36,20 +36,27 @@ const getUserFromToken = async (token) => {
     };
   }
   
-  // If decoding fails, try to fetch from API
+  // If decoding fails, try to fetch from API (with timeout)
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
     const response = await fetch(`${API_URL}/api/auth/me`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
     
     if (response.ok) {
       const data = await response.json();
       return data.user;
     }
   } catch (error) {
-    console.error('Error fetching user from API:', error);
+    // Silently handle - backend might not be running
+    console.debug('Could not fetch user from API:', error.message);
   }
   
   return null;
@@ -85,25 +92,29 @@ export const AuthProvider = ({ children }) => {
             }
           }
           
-          // Fetch full profile data from API to get complete user info
-          try {
-            const response = await fetch(`${API_URL}/api/users/profile`, {
+          // Fetch full profile data from API to get complete user info (non-blocking)
+          // This runs in the background and updates user data if successful
+          fetch(`${API_URL}/api/users/profile`, {
               headers: {
                 'Authorization': `Bearer ${token}`,
               },
-            });
-            
+          })
+            .then(response => {
             if (response.ok) {
-              const data = await response.json();
-              if (data.user) {
+                return response.json();
+              }
+              return null;
+            })
+            .then(data => {
+              if (data?.user) {
                 localStorage.setItem('user', JSON.stringify(data.user));
                 setUser(data.user);
               }
-            }
-          } catch (error) {
-            console.error('Error fetching user profile:', error);
-            // Continue with existing user data if API call fails
-          }
+            })
+            .catch(error => {
+              // Silently handle error - backend might not be running
+              console.debug('Could not fetch user profile (backend may be offline):', error.message);
+            });
         } else {
           // If no token but trying to access protected route, redirect to login
           if (router.pathname.startsWith('/employer') || router.pathname.startsWith('/candidate')) {
@@ -246,11 +257,17 @@ export const AuthProvider = ({ children }) => {
     if (!token) return;
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
       const response = await fetch(`${API_URL}/api/users/profile`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const data = await response.json();
@@ -260,7 +277,7 @@ export const AuthProvider = ({ children }) => {
         }
       }
     } catch (error) {
-      console.error('Error refreshing user profile:', error);
+      console.debug('Could not refresh user profile:', error.message);
     }
   };
 

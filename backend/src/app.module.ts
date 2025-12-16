@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { PassportModule } from '@nestjs/passport';
-import { JwtModule } from '@nestjs/jwt';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 import { existsSync } from 'fs';
 
@@ -17,6 +18,8 @@ import { AgentsModule } from './agents/agents.module';
 import { AiServicesModule } from './ai-services/ai-services.module';
 import { CoverLettersModule } from './cover-letters/cover-letters.module';
 import { ResumeBuilderModule } from './resume-builder/resume-builder.module';
+import { BillingModule } from './billing/billing.module';
+import { EntitlementModule } from './entitlement/entitlement.module';
 import { HealthController } from './health/health.controller';
 import { LoggerModule } from './common/logger/logger.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -54,6 +57,28 @@ function getEnvFilePath(): string {
     MongooseModule.forRoot(
       process.env.MONGODB_URI || 'mongodb://localhost:27017/jobocate',
     ),
+    // Rate Limiting
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => [
+        {
+          name: 'short',
+          ttl: 1000,
+          limit: configService.get<number>('THROTTLE_LIMIT_SHORT', 10),
+        },
+        {
+          name: 'medium',
+          ttl: 10000,
+          limit: configService.get<number>('THROTTLE_LIMIT_MEDIUM', 50),
+        },
+        {
+          name: 'long',
+          ttl: 60000,
+          limit: configService.get<number>('THROTTLE_LIMIT_LONG', 200),
+        },
+      ],
+      inject: [ConfigService],
+    }),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     AuthModule,
     UsersModule,
@@ -66,9 +91,19 @@ function getEnvFilePath(): string {
     AiServicesModule,
     CoverLettersModule,
     ResumeBuilderModule,
+    BillingModule,
+    EntitlementModule,
   ],
   controllers: [HealthController],
-  providers: [HttpExceptionFilter, LoggingInterceptor],
+  providers: [
+    HttpExceptionFilter,
+    LoggingInterceptor,
+    // Global Rate Limiting Guard
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
 

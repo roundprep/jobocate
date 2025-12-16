@@ -1,512 +1,559 @@
-import React from 'react';
 import Head from 'next/head';
-import { Navbar } from '../components/navbar';
-import { Footer } from '../components/footer';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/router';
+import { useAuth } from '@/context/AuthContext';
+import { Navbar } from '@/components/navbar';
+import { Footer } from '@/components/footer';
+import { motion } from 'framer-motion';
 
-const HomePage = () => {
+// Feature data
+const features = [
+  {
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+    title: 'AI Resume Builder',
+    description: 'Create ATS-optimized resumes that pass automated screening systems. Our AI tailors your resume for each application.',
+  },
+  {
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+    ),
+    title: 'Smart Job Matching',
+    description: 'Our AI scans thousands of jobs daily to find roles that match your skills, experience, and preferences.',
+  },
+  {
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+    title: 'Auto-Apply',
+    description: 'Automatically apply to verified jobs on company career pages. We submit applications on your behalf, saving you hours.',
+  },
+  {
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+    ),
+    title: 'Cover Letter Generator',
+    description: 'Generate personalized, compelling cover letters for each application with a single click.',
+  },
+  {
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+    title: 'Application Tracker',
+    description: 'Track all your applications in one dashboard. See status updates, deadlines, and interview schedules at a glance.',
+  },
+  {
+    icon: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+      </svg>
+    ),
+    title: 'Interview Prep',
+    description: 'Practice with AI-powered mock interviews. Get feedback on your answers and improve your interview skills.',
+  },
+];
+
+const howItWorks = [
+  {
+    step: '01',
+    title: 'Upload Your Resume',
+    description: 'Our AI analyzes your experience, skills, and career goals to build your professional profile.',
+  },
+  {
+    step: '02',
+    title: 'Set Preferences',
+    description: 'Tell us your ideal role, salary expectations, location preferences, and work style.',
+  },
+  {
+    step: '03',
+    title: 'AI Matches Jobs',
+    description: 'Our algorithm scans thousands of verified jobs daily and ranks them by fit score.',
+  },
+  {
+    step: '04',
+    title: 'Auto-Apply & Track',
+    description: 'We submit tailored applications on your behalf and track every response.',
+  },
+];
+
+const stats = [
+  { value: '500K+', label: 'Jobs Applied' },
+  { value: '85%', label: 'Interview Rate' },
+  { value: '100K+', label: 'Users Hired' },
+  { value: '4.9★', label: 'User Rating' },
+];
+
+const testimonials = [
+  {
+    quote: "I was spending 3 hours a day applying to jobs. Jobocate reduced that to 15 minutes and I got 3x more interviews.",
+    name: "Sarah Chen",
+    role: "Software Engineer at Google",
+    avatar: "SC"
+  },
+  {
+    quote: "The AI resume optimization got me past the ATS filters that were blocking me. Landed my dream job in 3 weeks.",
+    name: "Marcus Johnson",
+    role: "Product Manager at Stripe",
+    avatar: "MJ"
+  },
+  {
+    quote: "Auto-apply to verified company pages was a game changer. No more sketchy job boards—only real opportunities.",
+    name: "Emily Rodriguez",
+    role: "Data Scientist at Meta",
+    avatar: "ER"
+  },
+];
+
+const faqs = [
+  {
+    question: "How does auto-apply work?",
+    answer: "Our system applies directly to verified company career pages on your behalf. We never apply to scam listings or third-party aggregators. You can review and approve each application before it's submitted."
+  },
+  {
+    question: "Is my data secure?",
+    answer: "Absolutely. We're GDPR compliant and never share your data with third parties. You maintain full control over your information and can delete your account and data at any time."
+  },
+  {
+    question: "What makes your ATS optimization different?",
+    answer: "Our AI has analyzed millions of successful job applications across industries. We optimize for both ATS parsing and human readability, ensuring your resume gets seen by recruiters."
+  },
+  {
+    question: "Can I use Jobocate for free?",
+    answer: "Yes! Our free tier includes resume building, job matching, and limited auto-apply credits each month. Premium plans unlock unlimited applications and advanced features."
+  },
+];
+
+const trustedCompanies = ['Google', 'Meta', 'Amazon', 'Microsoft', 'Apple', 'Netflix'];
+
+export default function Home() {
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const handleGetStarted = () => {
+    if (user) {
+      const dashboardPath = user.role === 'ROLE_EMPLOYER' 
+        ? '/employer/dashboard' 
+        : '/candidate/dashboard';
+      router.push(dashboardPath);
+    } else {
+      router.push('/signup');
+    }
+  };
+
   return (
-    <div className="bg-white">
+    <div className="min-h-screen bg-white">
       <Head>
-        <title>Jobocate - AI-Powered Job Search | 10x Faster Applications</title>
-        <meta name="description" content="Stop applying for weeks. Start interviewing in days. AI-powered job search with smart matching, auto-apply, and interview coaching." />
+        <title>Jobocate | AI-Powered Job Search That Gets You Hired</title>
+        <meta name="description" content="Revolutionizing the job search with AI. Auto-apply to thousands of verified jobs, optimize your resume for ATS, and land interviews 10x faster." />
+        <link rel="icon" href="/favicon.ico" />
       </Head>
 
       <Navbar />
 
+      <main>
       {/* Hero Section */}
-      <section className="relative min-h-[90vh] flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-purple-50 overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute top-20 left-10 w-72 h-72 bg-orange-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-          <div className="absolute top-40 right-10 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-          <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-pink-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
-        </div>
-
-        <div className="relative container mx-auto px-4 py-20 text-center z-10">
-          {/* Social Proof Badge */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <div className="flex -space-x-2">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-white"></div>
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-green-600 border-2 border-white"></div>
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-white"></div>
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 border-2 border-white"></div>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-yellow-500 text-lg">★★★★★</span>
-              <span className="text-sm text-gray-600 ml-2">Loved by 100,000+ users</span>
-            </div>
+        <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-gradient-to-b from-primary-50/50 via-white to-white">
+          {/* Background Effects */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-20 left-1/4 w-[500px] h-[500px] bg-primary-100/40 rounded-full blur-[100px]" />
+            <div className="absolute bottom-20 right-1/4 w-[400px] h-[400px] bg-orange-100/40 rounded-full blur-[80px]" />
+            <div className="dot-pattern absolute inset-0 opacity-50" />
           </div>
+
+          <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+            <div className="text-center">
+              {/* Badge */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary-50 border border-primary-100 mb-8"
+              >
+                <span className="w-2 h-2 rounded-full bg-primary-500" />
+                <span className="text-primary-600 text-sm font-medium">Join 100,000+ job seekers using AI</span>
+              </motion.div>
 
           {/* Main Headline */}
-          <h1 className="text-6xl md:text-7xl font-extrabold text-gray-900 mb-6 leading-tight">
-            Stop Applying for <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">Weeks</span>
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="text-5xl md:text-7xl lg:text-8xl font-display font-bold text-gray-900 leading-tight mb-6"
+              >
+                Revolutionizing the
             <br />
-            Start Interviewing in <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-600">Days</span>
-          </h1>
+                <span className="gradient-text">Job Search</span> with AI
+              </motion.h1>
 
-          {/* Tagline */}
-          <div className="mb-8 space-y-2">
-            <p className="text-2xl md:text-3xl font-bold text-gray-700">
-              AI-Powered Reach. Human-Smart Precision.
-            </p>
-            <p className="text-3xl md:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-orange-500 via-red-500 to-purple-600">
-              10x Faster Job Applications
-            </p>
-          </div>
-
-          {/* Sub headline */}
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-10">
-            Jobocate finds high-match roles, tailors your resume & cover letter, auto-applies, 
-            and coaches you live - so you move from submit to scheduled fast.
-          </p>
+              {/* Subheadline */}
+              <motion.p
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="max-w-3xl mx-auto text-xl md:text-2xl text-gray-600 mb-12"
+              >
+                Stop applying for weeks. Start interviewing in days. Our AI finds matching jobs, tailors your applications with human review for quality, and helps you land interviews 10x faster.
+              </motion.p>
 
           {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-            <Link href="/signup">
-              <button className="group relative px-8 py-4 bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold text-lg rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                <span className="relative z-10">Get Started - It's Free</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-orange-600 to-red-700 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10"
+              >
+                <button
+                  onClick={handleGetStarted}
+                  className="group px-8 py-4 bg-primary-500 hover:bg-primary-600 text-white text-lg font-semibold rounded-full transition-all duration-300"
+                >
+                  <span className="flex items-center gap-2">
+                    Get Started — It's Free
+                    <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </span>
               </button>
+                <Link
+                  href="/#how-it-works"
+                  className="px-8 py-4 bg-white border border-gray-200 text-gray-700 text-lg font-medium rounded-full hover:border-gray-300 hover:bg-gray-50 transition-all duration-300 flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  Watch Demo
             </Link>
-            <button className="px-8 py-4 bg-white text-gray-900 font-semibold text-lg rounded-xl border-2 border-gray-300 hover:border-orange-500 transition-all duration-300 hover:shadow-lg">
-              Watch Demo →
-            </button>
-          </div>
+              </motion.div>
 
-          {/* Stats Row */}
-          <div className="flex flex-wrap justify-center gap-8 text-center">
-            <div>
-              <p className="text-4xl font-bold text-gray-900">1.6M+</p>
-              <p className="text-sm text-gray-600">Applications Sent</p>
-            </div>
-            <div className="w-px bg-gray-300"></div>
-            <div>
-              <p className="text-4xl font-bold text-gray-900">58K+</p>
-              <p className="text-sm text-gray-600">Interviews Landed</p>
-            </div>
-            <div className="w-px bg-gray-300"></div>
-            <div>
-              <p className="text-4xl font-bold text-orange-600">32x</p>
-              <p className="text-sm text-gray-600">Faster Results</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trusted By Companies */}
-      <section className="py-12 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <p className="text-center text-gray-600 mb-8 font-semibold">
-            Our users get hired by top companies worldwide
-          </p>
-          <div className="flex flex-wrap justify-center items-center gap-8 opacity-60 grayscale hover:grayscale-0 transition-all">
-            {['Google', 'Microsoft', 'Meta', 'Amazon', 'Netflix', 'Spotify', 'Stripe', 'Coinbase'].map((company) => (
-              <div key={company} className="text-2xl font-bold text-gray-700">
-                {company}
+              {/* Social Proof - Avatars */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.35 }}
+                className="flex items-center justify-center gap-4 mb-16"
+              >
+                <div className="flex -space-x-3">
+                  {['JC', 'MP', 'SK', 'AL'].map((initials, i) => (
+                    <div
+                      key={i}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold border-2 border-white ${
+                        i === 0 ? 'bg-primary-500' : i === 1 ? 'bg-orange-500' : i === 2 ? 'bg-green-500' : 'bg-purple-500'
+                      }`}
+                    >
+                      {initials}
               </div>
             ))}
+                </div>
+                <div className="flex items-center gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <svg key={i} className="w-4 h-4 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                  ))}
+                </div>
+                <span className="text-gray-500 text-sm">Loved by 100,000+ users</span>
+              </motion.div>
+
+              {/* Dashboard Preview */}
+              <motion.div
+                initial={{ opacity: 0, y: 40 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, delay: 0.4 }}
+                className="relative max-w-5xl mx-auto"
+              >
+                <div className="relative rounded-2xl overflow-hidden bg-gray-100 shadow-2xl border border-gray-200">
+                  {/* Browser Chrome */}
+                  <div className="h-10 bg-gray-200 flex items-center px-4 gap-3">
+                    <div className="flex gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-400" />
+                      <div className="w-3 h-3 rounded-full bg-yellow-400" />
+                      <div className="w-3 h-3 rounded-full bg-green-400" />
+                    </div>
+                    <div className="flex-1 flex justify-center">
+                      <div className="px-4 py-1 bg-white rounded-md text-xs text-gray-500">
+                        app.jobocate.com/dashboard
+                </div>
+              </div>
+            </div>
+
+                  {/* Dashboard Content */}
+                  <div className="p-6 bg-gray-50">
+                    {/* Stats Cards */}
+                    <div className="grid grid-cols-4 gap-4 mb-6">
+                      <div className="bg-white rounded-xl p-5 border border-gray-100">
+                        <p className="text-gray-500 text-sm mb-1">Applications Sent</p>
+                        <p className="text-3xl font-bold text-gray-900">247 <span className="text-green-500 text-sm font-medium">+12%</span></p>
+                      </div>
+                      <div className="bg-white rounded-xl p-5 border border-gray-100">
+                        <p className="text-gray-500 text-sm mb-1">Interviews</p>
+                        <p className="text-3xl font-bold text-gray-900">18 <span className="text-green-500 text-sm font-medium">+4</span></p>
+                </div>
+                      <div className="bg-white rounded-xl p-5 border border-gray-100">
+                        <p className="text-gray-500 text-sm mb-1">Match Score</p>
+                        <p className="text-3xl font-bold text-primary-500">94% <span className="text-green-500 text-sm font-medium">+2%</span></p>
+                </div>
+                      <div className="bg-white rounded-xl p-5 border border-gray-100">
+                        <p className="text-gray-500 text-sm mb-1">Saved Jobs</p>
+                        <p className="text-3xl font-bold text-primary-500">52 <span className="text-green-500 text-sm font-medium">+8</span></p>
+              </div>
+            </div>
+
+                    {/* Content Placeholders */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white rounded-xl h-32 border border-gray-100" />
+                      <div className="bg-white rounded-xl h-32 border border-gray-100" />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Social Proof */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.6 }}
+                className="mt-20 flex flex-wrap justify-center items-center gap-8"
+              >
+                <span className="text-sm text-gray-500">Trusted by professionals at</span>
+                <div className="flex items-center gap-8">
+                  {trustedCompanies.map((company) => (
+                    <span key={company} className="text-lg font-semibold text-gray-400">{company}</span>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
+        {/* Stats Section */}
+        <section className="py-20 bg-white border-y border-gray-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+              {stats.map((stat, index) => (
+                <motion.div
+                  key={stat.label}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  className="text-center"
+                >
+                  <div className="text-4xl md:text-5xl font-display font-bold gradient-text mb-2">{stat.value}</div>
+                  <div className="text-gray-500">{stat.label}</div>
+                </motion.div>
+              ))}
           </div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold text-gray-900 mb-4">
-              How Jobocate Works in <span className="text-orange-600">3 Simple Steps</span>
+        {/* Features Section */}
+        <section id="features" className="py-32 bg-gray-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-20"
+            >
+              <span className="text-primary-600 text-sm font-semibold uppercase tracking-wider">Everything You Need</span>
+              <h2 className="text-4xl md:text-5xl font-display font-bold text-gray-900 mt-4 mb-6">
+                Your Complete <span className="gradient-text">Job Search Toolkit</span>
             </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              From upload to interview in minutes, not months
-            </p>
-          </div>
+              <p className="max-w-2xl mx-auto text-lg text-gray-600">
+                From resume optimization to automated applications, we've built every tool you need to land your dream job faster.
+              </p>
+            </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-12">
-            {/* Step 1 */}
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
-              <div className="relative bg-white p-8 rounded-2xl border-2 border-gray-100">
-                <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-6">
-                  1
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Upload Your Resume</h3>
-                <p className="text-gray-600 mb-6">
-                  Simply upload or create a resume from one of our AI-powered templates inside the app.
-                </p>
-                <div className="h-48 bg-gradient-to-br from-orange-50 to-red-50 rounded-xl flex items-center justify-center">
-                  <svg className="w-24 h-24 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Step 2 */}
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
-              <div className="relative bg-white p-8 rounded-2xl border-2 border-gray-100">
-                <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-6">
-                  2
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Set Job Preferences</h3>
-                <p className="text-gray-600 mb-6">
-                  Define your ideal roles, skills, salary range, and location to ensure the best job matches.
-                </p>
-                <div className="h-48 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl flex items-center justify-center">
-                  <svg className="w-24 h-24 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Step 3 */}
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
-              <div className="relative bg-white p-8 rounded-2xl border-2 border-gray-100">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center text-white font-bold text-2xl mb-6">
-                  3
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">AI Applies Automatically</h3>
-                <p className="text-gray-600 mb-6">
-                  Our AI customizes and sends personalized applications to thousands of relevant jobs - landing interviews 32x faster.
-                </p>
-                <div className="h-48 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl flex items-center justify-center">
-                  <svg className="w-24 h-24 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section className="py-20 bg-gradient-to-b from-gray-50 to-white">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold text-gray-900 mb-4">
-              Everything You Need to Get Hired <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-red-600">FAST</span>
-            </h2>
-            <p className="text-xl text-gray-600">
-              Powered by cutting-edge AI technology
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                title: 'AI Resume Builder',
-                description: 'AI generates ATS-optimized resumes for each job application, based on your skills and experience.',
-                icon: '📄',
-                gradient: 'from-blue-500 to-cyan-500'
-              },
-              {
-                title: 'AI Cover Letter',
-                description: 'AI generates personalized cover letters for each job application, increasing your chances of getting hired.',
-                icon: '✉️',
-                gradient: 'from-purple-500 to-pink-500'
-              },
-              {
-                title: 'Auto Apply',
-                description: 'Let AI apply to thousands of jobs for you automatically. Save time and get hired faster.',
-                icon: '⚡',
-                gradient: 'from-orange-500 to-red-500'
-              },
-              {
-                title: 'Smart Job Matching',
-                description: 'AI analyzes thousands of jobs and only applies to roles that match your skills and preferences.',
-                icon: '🎯',
-                gradient: 'from-green-500 to-emerald-500'
-              },
-              {
-                title: 'Interview Buddy',
-                description: 'Get real-time interview help and answers to interview questions with our AI coach.',
-                icon: '💬',
-                gradient: 'from-indigo-500 to-purple-500'
-              },
-              {
-                title: 'Application Tracking',
-                description: 'Track all your applications in one place. From "Applied" to "Interview Scheduled".',
-                icon: '📊',
-                gradient: 'from-pink-500 to-rose-500'
-              }
-            ].map((feature, index) => (
-              <div key={index} className="group relative">
-                <div className={`absolute -inset-0.5 bg-gradient-to-r ${feature.gradient} rounded-2xl blur opacity-20 group-hover:opacity-50 transition duration-300`}></div>
-                <div className="relative bg-white p-8 rounded-2xl border border-gray-200 hover:border-transparent transition-all duration-300">
-                  <div className={`w-16 h-16 bg-gradient-to-br ${feature.gradient} rounded-xl flex items-center justify-center text-4xl mb-6 shadow-lg`}>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {features.map((feature, index) => (
+                <motion.div
+                  key={feature.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  className="group p-8 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-xl hover:border-primary-100 transition-all duration-300"
+                >
+                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary-50 to-orange-50 border border-primary-100 flex items-center justify-center text-primary-500 mb-6 group-hover:scale-110 transition-transform duration-300">
                     {feature.icon}
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-3">{feature.title}</h3>
-                  <p className="text-gray-600">{feature.description}</p>
-                </div>
-              </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
+                  <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Results Section */}
-      <section className="py-20 bg-gradient-to-r from-gray-900 to-gray-800 text-white">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-5xl font-bold mb-6">
-            See Real <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">Results</span> with Jobocate
+        {/* How It Works Section */}
+        <section id="how-it-works" className="py-32 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-20"
+            >
+              <span className="text-primary-600 text-sm font-semibold uppercase tracking-wider">Simple Process</span>
+              <h2 className="text-4xl md:text-5xl font-display font-bold text-gray-900 mt-4 mb-6">
+                How <span className="gradient-text">Jobocate</span> Works
           </h2>
-          <p className="text-xl text-gray-300 mb-16 max-w-2xl mx-auto">
-            Join thousands who've transformed their job search
-          </p>
+              <p className="max-w-2xl mx-auto text-lg text-gray-600">
+                Get started in minutes. Our AI handles the heavy lifting while you focus on preparing for interviews.
+              </p>
+            </motion.div>
 
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              { number: '58K+', label: 'Interviews Landed' },
-              { number: '1.6M+', label: 'Applications Sent' },
-              { number: '94%', label: 'User Satisfaction' },
-              { number: '17x', label: 'Faster Path to Interviews' }
-            ].map((stat, index) => (
-              <div key={index} className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 hover:bg-white/20 transition-all duration-300">
-                <p className="text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">
-                  {stat.number}
-                </p>
-                <p className="text-gray-300">{stat.label}</p>
-              </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+              {howItWorks.map((item, index) => (
+                <motion.div
+                  key={item.step}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.15 }}
+                  className="relative"
+                >
+                  {index < howItWorks.length - 1 && (
+                    <div className="hidden lg:block absolute top-12 left-full w-full h-px bg-gradient-to-r from-primary-200 to-transparent" />
+                  )}
+                  <div className="text-6xl font-display font-bold text-primary-100 mb-4">{item.step}</div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">{item.title}</h3>
+                  <p className="text-gray-600">{item.description}</p>
+                </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20 bg-gradient-to-b from-white to-gray-50">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold text-gray-900 mb-4">
-              Simple, Transparent <span className="text-orange-600">Pricing</span>
+        {/* Testimonials Section */}
+        <section className="py-32 bg-gradient-to-b from-gray-50 to-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-20"
+            >
+              <span className="text-primary-600 text-sm font-semibold uppercase tracking-wider">Success Stories</span>
+              <h2 className="text-4xl md:text-5xl font-display font-bold text-gray-900 mt-4 mb-6">
+                Loved by <span className="gradient-text">100K+</span> Job Seekers
             </h2>
-            <p className="text-xl text-gray-600">
-              Choose the plan that fits your job search goals
-            </p>
-          </div>
+            </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {/* Free Plan */}
-            <div className="bg-white p-8 rounded-2xl border-2 border-gray-200 hover:border-orange-300 transition-all duration-300 hover:shadow-xl">
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Free</h3>
-              <p className="text-gray-600 mb-6">Perfect for getting started</p>
-              <div className="mb-6">
-                <span className="text-5xl font-bold text-gray-900">$0</span>
-                <span className="text-gray-600">/month</span>
-              </div>
-              <ul className="space-y-4 mb-8">
-                {[
-                  'AI Resume Builder',
-                  'Resume Score Analyzer',
-                  'Basic Cover Letters',
-                  '10 Auto Applications/month',
-                  'Job Search Tools'
-                ].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-3">
-                    <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-gray-700">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <button className="w-full py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl hover:bg-gray-200 transition-all">
-                Get Started Free
-              </button>
-            </div>
-
-            {/* Pro Plan - Popular */}
-            <div className="relative transform md:scale-105 z-10">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-600 text-white px-4 py-1 rounded-full text-sm font-bold">
-                MOST POPULAR
-              </div>
-              <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl blur opacity-50"></div>
-              <div className="relative bg-white p-8 rounded-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">Pro</h3>
-                <p className="text-gray-600 mb-6">Triple your interview chances!</p>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold text-gray-900">$29</span>
-                  <span className="text-gray-600">/month</span>
-                  <span className="ml-2 text-sm text-gray-500 line-through">$35</span>
-                </div>
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-6">
-                  <p className="text-sm font-semibold text-orange-700">
-                    ⚡ 250 auto applies/month · Only $0.12 per application
-                  </p>
-                </div>
-                <ul className="space-y-4 mb-8">
-                  {[
-                    'Everything in Free',
-                    '250 Auto Applications/month',
-                    'AI-Optimized Resumes',
-                    'Tailored Cover Letters',
-                    'Priority Job Matching',
-                    'Interview Preparation',
-                    'Email Support'
-                  ].map((feature, i) => (
-                    <li key={i} className="flex items-center gap-3">
-                      <svg className="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            <div className="grid md:grid-cols-3 gap-8">
+              {testimonials.map((testimonial, index) => (
+                <motion.div
+                  key={testimonial.name}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  className="p-8 rounded-2xl bg-white border border-gray-100 shadow-sm"
+                >
+                  <div className="flex mb-4">
+                    {[...Array(5)].map((_, i) => (
+                      <svg key={i} className="w-5 h-5 text-orange-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                       </svg>
-                      <span className="text-gray-700 font-medium">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-600 text-white font-bold rounded-xl hover:shadow-2xl transition-all duration-300 hover:scale-105">
-                  Get Started with Pro
-                </button>
-              </div>
-            </div>
-
-            {/* Scale Plan */}
-            <div className="bg-white p-8 rounded-2xl border-2 border-gray-200 hover:border-purple-300 transition-all duration-300 hover:shadow-xl">
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-2xl font-bold text-gray-900">Scale</h3>
-                <span className="bg-purple-100 text-purple-700 text-xs font-bold px-2 py-1 rounded-full">50% OFF</span>
-              </div>
-              <p className="text-gray-600 mb-6">Dominate your job search!</p>
-              <div className="mb-6">
-                <span className="text-5xl font-bold text-gray-900">$59</span>
-                <span className="text-gray-600">/month</span>
-                <span className="ml-2 text-sm text-gray-500 line-through">$95</span>
-              </div>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-6">
-                <p className="text-sm font-semibold text-purple-700">
-                  🚀 1000 auto applies/month · Only $0.06 per application
-                </p>
-              </div>
-              <ul className="space-y-4 mb-8">
-                {[
-                  'Everything in Pro',
-                  '1000 Auto Applications/month',
-                  'Advanced AI Optimization',
-                  'Interview Buddy (Real-time)',
-                  'Resume Translator',
-                  'Priority Support',
-                  'Career Coaching'
-                ].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-3">
-                    <svg className="w-5 h-5 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    <span className="text-gray-700 font-medium">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <button className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold rounded-xl hover:shadow-xl transition-all">
-                Get Started with Scale
-              </button>
-            </div>
-          </div>
-
-          <p className="text-center text-gray-600 mt-12">
-            All plans include a 7-day money-back guarantee
-          </p>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-20 bg-white">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold text-gray-900 mb-4">
-              Join <span className="text-orange-600">100,000+</span> Job Seekers
-            </h2>
-            <p className="text-xl text-gray-600">
-              Who've already found their dream careers with Jobocate
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                quote: "Got a job in a week using the application kit and interview help. SO GLAD I SUBSCRIBED!!",
-                name: "Jessica G.",
-                role: "Software Engineer",
-                avatar: "👩‍💻",
-                rating: 5
-              },
-              {
-                quote: "AIApply transformed my job hunt. I landed a $180k/year job after prepping with the platform.",
-                name: "Michael P.",
-                role: "Product Manager",
-                avatar: "👨‍💼",
-                rating: 5
-              },
-              {
-                quote: "Was job hunting for months until I found Jobocate. Finally, a tool that does the tedious work for me!",
-                name: "Sarah K.",
-                role: "Marketing Manager",
-                avatar: "👩‍🎨",
-                rating: 5
-              }
-            ].map((testimonial, index) => (
-              <div key={index} className="bg-gradient-to-br from-gray-50 to-white p-8 rounded-2xl border border-gray-200 hover:shadow-xl transition-all duration-300">
-                <div className="flex items-center gap-1 mb-4">
-                  {[...Array(testimonial.rating)].map((_, i) => (
-                    <span key={i} className="text-yellow-500 text-xl">★</span>
                   ))}
                 </div>
-                <p className="text-gray-700 mb-6 italic">"{testimonial.quote}"</p>
+                  <p className="text-gray-700 text-lg mb-6 leading-relaxed">"{testimonial.quote}"</p>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-red-500 rounded-full flex items-center justify-center text-2xl">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-500 to-orange-500 flex items-center justify-center text-white font-bold">
                     {testimonial.avatar}
                   </div>
                   <div>
-                    <p className="font-bold text-gray-900">{testimonial.name}</p>
-                    <p className="text-sm text-gray-600">{testimonial.role}</p>
+                      <div className="font-semibold text-gray-900">{testimonial.name}</div>
+                      <div className="text-sm text-gray-500">{testimonial.role}</div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="py-24 bg-gradient-to-r from-orange-500 via-red-500 to-purple-600 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black opacity-10"></div>
-        <div className="relative container mx-auto px-4 text-center z-10">
-          <h2 className="text-5xl md:text-6xl font-extrabold text-white mb-6">
+        {/* FAQ Section */}
+        <section id="faq" className="py-32 bg-white">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-center mb-16"
+            >
+              <span className="text-primary-600 text-sm font-semibold uppercase tracking-wider">FAQ</span>
+              <h2 className="text-4xl md:text-5xl font-display font-bold text-gray-900 mt-4">
+                Common Questions
+              </h2>
+            </motion.div>
+
+            <div className="space-y-4">
+              {faqs.map((faq, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 10 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                  className="p-6 rounded-2xl bg-gray-50 border border-gray-100"
+                >
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">{faq.question}</h3>
+                  <p className="text-gray-600 leading-relaxed">{faq.answer}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* CTA Section */}
+        <section className="py-32 relative overflow-hidden bg-gray-900">
+          <div className="absolute inset-0 opacity-30">
+            <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary-500 rounded-full blur-[120px]" />
+            <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-orange-500 rounded-full blur-[120px]" />
+          </div>
+
+          <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <h2 className="text-4xl md:text-6xl font-display font-bold text-white mb-6">
             Ready to Land Your Dream Job?
           </h2>
-          <p className="text-2xl text-white/90 mb-10 max-w-3xl mx-auto">
-            Join 100,000+ job seekers using AI to get hired faster. Start your journey today—completely free!
-          </p>
-          <Link href="/signup">
-            <button className="px-12 py-5 bg-white text-orange-600 font-bold text-xl rounded-xl shadow-2xl hover:shadow-3xl hover:scale-110 transition-all duration-300">
-              Get Started - It's Free →
+              <p className="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
+                Join 100,000+ professionals who've transformed their job search with AI. Start free today—no credit card required.
+              </p>
+              <button
+                onClick={handleGetStarted}
+                className="group px-10 py-5 bg-primary-500 hover:bg-primary-600 text-white text-xl font-semibold rounded-full transition-all duration-300"
+              >
+                <span className="flex items-center gap-3">
+                  Get Started Free
+                  <svg className="w-6 h-6 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </span>
             </button>
-          </Link>
-          <p className="text-white/80 mt-6">No credit card required • Cancel anytime</p>
+              <p className="mt-6 text-gray-400 text-sm">Free forever plan available • No credit card required</p>
+            </motion.div>
         </div>
       </section>
+      </main>
 
       <Footer />
-
-      <style jsx>{`
-        @keyframes blob {
-          0%, 100% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-        }
-        .animate-blob {
-          animation: blob 7s infinite;
-        }
-        .animation-delay-2000 {
-          animation-delay: 2s;
-        }
-        .animation-delay-4000 {
-          animation-delay: 4s;
-        }
-      `}</style>
     </div>
   );
-};
-
-export default HomePage;
+}

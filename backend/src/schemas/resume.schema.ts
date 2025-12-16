@@ -147,6 +147,23 @@ export class Resume {
   @Prop()
   pdfPath?: string;
 
+  @Prop({ default: 1 })
+  version: number;
+
+  @Prop({
+    type: Object,
+    default: {
+      color: '#000000',
+      font: 'inter',
+      spacing: 'normal', // compact, normal, loose
+    }
+  })
+  theme: {
+    color: string;
+    font: string;
+    spacing: string;
+  };
+
   @Prop({ default: false })
   isDefault?: boolean;
 

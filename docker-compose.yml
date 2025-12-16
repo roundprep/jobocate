@@ -23,8 +23,8 @@ services:
   # Backend API
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: jobocate-backend
     restart: unless-stopped
     ports:
@@ -33,6 +33,7 @@ services:
       - ./backend/.env.docker
     environment:
       # Override with your own API keys
+      - PORT=8000
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - EMERGENT_LLM_KEY=${EMERGENT_LLM_KEY:-}

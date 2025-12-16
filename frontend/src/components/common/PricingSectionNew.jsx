@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 
 const PricingSectionNew = () => {
   const [isYearly, setIsYearly] = useState(true);
+  const { user } = useAuth();
 
   const plans = [
     {
@@ -61,9 +63,8 @@ const PricingSectionNew = () => {
               style={{ backgroundColor: '#CCCCCC' }}
             >
               <span
-                className={`absolute top-1 left-1 w-5 h-5 rounded-full transition-transform ${
-                  isYearly ? 'translate-x-7' : ''
-                }`}
+                className={`absolute top-1 left-1 w-5 h-5 rounded-full transition-transform ${isYearly ? 'translate-x-7' : ''
+                  }`}
                 style={{ backgroundColor: isYearly ? '#FF5733' : '#FFFFFF' }}
               />
             </button>
@@ -89,14 +90,14 @@ const PricingSectionNew = () => {
                   Most popular
                 </span>
               )}
-              
+
               <h3 className="font-bold mb-4" style={{ fontSize: '20px', color: plan.popular ? '#FFFFFF' : '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
                 {plan.name}
               </h3>
               <div className="font-bold mb-6" style={{ fontSize: '36px', color: plan.popular ? '#FFFFFF' : '#1D2445', fontFamily: 'Manrope, sans-serif' }}>
-                {plan.price}
+                {user ? plan.price : '$$$'}
               </div>
-              
+
               <Link href="/signup">
                 <button
                   className="w-full py-3 rounded-lg font-semibold mb-6 transition-opacity hover:opacity-90"
@@ -106,7 +107,7 @@ const PricingSectionNew = () => {
                     fontFamily: 'Manrope, sans-serif'
                   }}
                 >
-                  {plan.button}
+                  {user ? plan.button : 'Sign Up to View'}
                 </button>
               </Link>
 

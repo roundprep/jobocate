@@ -16,7 +16,10 @@ import {
   XMarkIcon,
   Cog6ToothIcon,
   UserCircleIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  CreditCardIcon,
+  DocumentDuplicateIcon,
+  SparklesIcon
 } from '@heroicons/react/24/outline';
 
 function CandidateLayoutContent({ children }) {
@@ -31,9 +34,16 @@ function CandidateLayoutContent({ children }) {
   // Navigation items
   const navigation = [
     { name: 'Dashboard', href: '/candidate/dashboard', icon: HomeIcon },
-    { name: 'Find Jobs', href: '/candidate/jobs', icon: BriefcaseIcon },
+    { name: 'Find Jobs', href: '/candidate/recommendations', icon: BriefcaseIcon },
     { name: 'Applications', href: '/candidate/applications', icon: DocumentTextIcon },
-    { name: 'Messages', href: '/candidate/messages', icon: ChatBubbleLeftIcon },
+    { name: 'Resume Builder', href: '/candidate/resume-builder', icon: DocumentDuplicateIcon },
+    { name: 'Cover Letter', href: '/candidate/cover-letter', icon: SparklesIcon },
+  ];
+
+  // Secondary navigation
+  const secondaryNavigation = [
+    { name: 'Billing', href: '/candidate/billing', icon: CreditCardIcon },
+    { name: 'Settings', href: '/candidate/settings', icon: Cog6ToothIcon },
   ];
 
   // Close profile dropdown when clicking outside
@@ -106,13 +116,32 @@ function CandidateLayoutContent({ children }) {
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
-            <nav className="flex-1 px-2 py-4 space-y-1">
+            <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
                   className={`flex items-center px-4 py-2 text-sm font-medium rounded-md ${
-                    router.pathname === item.href
+                    router.pathname === item.href || router.pathname.startsWith(item.href + '/')
+                      ? 'bg-orange-50 text-orange-600'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <item.icon className="mr-3 h-5 w-5" />
+                  {item.name}
+                </Link>
+              ))}
+              
+              {/* Divider */}
+              <div className="my-4 border-t border-gray-200"></div>
+              
+              {/* Secondary Navigation */}
+              {secondaryNavigation.map((item) => (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center px-4 py-2 text-sm font-medium rounded-md ${
+                    router.pathname === item.href || router.pathname.startsWith(item.href + '/')
                       ? 'bg-orange-50 text-orange-600'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                   }`}
@@ -180,7 +209,9 @@ function CandidateLayoutContent({ children }) {
           <header className="bg-white shadow-sm hidden lg:block">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
               <h1 className="text-lg font-semibold text-gray-900">
-                {navigation.find((item) => item.href === router.pathname)?.name || 'Dashboard'}
+                {[...navigation, ...secondaryNavigation].find((item) => 
+                  router.pathname === item.href || router.pathname.startsWith(item.href + '/')
+                )?.name || 'Dashboard'}
               </h1>
               <div className="flex items-center space-x-4">
                 <button className="p-1 text-gray-500 hover:text-gray-600">

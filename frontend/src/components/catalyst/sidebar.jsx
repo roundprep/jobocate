@@ -8,7 +8,7 @@ import { TouchTarget } from './button'
 import { Link } from './link'
 
 export function Sidebar({ className, ...props }) {
-  return <nav {...props} className={clsx(className, 'flex h-full min-h-0 flex-col bg-zinc-50')} />
+  return <nav {...props} className={clsx(className, 'flex h-full min-h-0 flex-col')} />
 }
 
 export function SidebarHeader({ className, ...props }) {
@@ -17,7 +17,7 @@ export function SidebarHeader({ className, ...props }) {
       {...props}
       className={clsx(
         className,
-        'flex flex-col border-b border-zinc-950/5 p-4 dark:border-white/5 [&>[data-slot=section]+[data-slot=section]]:mt-2.5'
+        'flex flex-col border-b border-zinc-200 dark:border-zinc-800 p-4 [&>[data-slot=section]+[data-slot=section]]:mt-2.5'
       )}
     />
   )
@@ -41,7 +41,7 @@ export function SidebarFooter({ className, ...props }) {
       {...props}
       className={clsx(
         className,
-        'flex flex-col border-t border-zinc-950/5 p-4 dark:border-white/5 [&>[data-slot=section]+[data-slot=section]]:mt-2.5'
+        'flex flex-col border-t border-zinc-200 dark:border-zinc-800 p-4 [&>[data-slot=section]+[data-slot=section]]:mt-2.5'
       )}
     />
   )
@@ -58,7 +58,7 @@ export function SidebarSection({ className, ...props }) {
 }
 
 export function SidebarDivider({ className, ...props }) {
-  return <hr {...props} className={clsx(className, 'my-4 border-t border-zinc-950/5 lg:-mx-4 dark:border-white/5')} />
+  return <hr {...props} className={clsx(className, 'my-4 border-t border-zinc-200 dark:border-zinc-800 lg:-mx-4')} />
 }
 
 export function SidebarSpacer({ className, ...props }) {
@@ -76,52 +76,38 @@ export const SidebarItem = forwardRef(function SidebarItem(
 
   ref
 ) {
-  const isCollapsed = className?.includes('justify-center')
-  
   let classes = clsx(
     // Base
-    'flex w-full items-center rounded-lg py-2.5 text-left text-base/6 font-medium text-zinc-950 sm:py-2 sm:text-sm/5',
-    // Gap between icon and label (only when not collapsed)
-    !isCollapsed && 'gap-3 px-2',
-    // When collapsed - center everything
-    isCollapsed && 'justify-center px-0',
-    // Leading icon/icon-only - lighter color - larger size
-    '*:data-[slot=icon]:size-7 *:data-[slot=icon]:shrink-0 *:data-[slot=icon]:fill-zinc-400 sm:*:data-[slot=icon]:size-6',
+    'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all duration-200',
+    // Text colors - light theme defaults
+    'text-zinc-700 dark:text-white',
+    // Leading icon/icon-only
+    '*:data-[slot=icon]:size-5 *:data-[slot=icon]:shrink-0 *:data-[slot=icon]:text-zinc-500 dark:*:data-[slot=icon]:text-zinc-400',
     // Trailing icon (down chevron or similar)
-    '*:last:data-[slot=icon]:ml-auto *:last:data-[slot=icon]:size-5 sm:*:last:data-[slot=icon]:size-4',
+    '*:last:data-[slot=icon]:ml-auto *:last:data-[slot=icon]:size-5',
     // Avatar
-    '*:data-[slot=avatar]:-m-0.5 *:data-[slot=avatar]:size-7 sm:*:data-[slot=avatar]:size-6',
+    '*:data-[slot=avatar]:size-8 *:data-[slot=avatar]:shrink-0',
     // Hover
-    'data-hover:bg-zinc-950/5 data-hover:*:data-[slot=icon]:fill-zinc-950',
-    // Active
-    'data-active:bg-zinc-950/5 data-active:*:data-[slot=icon]:fill-zinc-950',
-    // Current
-    'data-current:*:data-[slot=icon]:fill-zinc-950',
-    // Dark mode - lighter
-    'dark:text-white dark:*:data-[slot=icon]:fill-zinc-500',
-    'dark:data-hover:bg-white/5 dark:data-hover:*:data-[slot=icon]:fill-white',
-    'dark:data-active:bg-white/5 dark:data-active:*:data-[slot=icon]:fill-white',
-    'dark:data-current:*:data-[slot=icon]:fill-white'
+    'hover:scale-[1.02]'
   )
 
   return (
-    <span className={clsx(className?.replace('justify-center', ''), 'relative')}>
-      {current && !isCollapsed && (
+    <span className={clsx(className, 'relative')}>
+      {current && (
         <motion.span
           layoutId="current-indicator"
-          className="absolute inset-y-2 -left-4 w-0.5 rounded-full bg-zinc-950 dark:bg-white"
+          className="absolute inset-y-2 -left-4 w-0.5 rounded-full bg-primary-500 dark:bg-primary-400"
         />
       )}
       {typeof props.href === 'string' ? (
-        <Headless.CloseButton
-          as={Link}
+        <Link
           {...props}
           className={classes}
           data-current={current ? 'true' : undefined}
           ref={ref}
         >
           <TouchTarget>{children}</TouchTarget>
-        </Headless.CloseButton>
+        </Link>
       ) : (
         <Headless.Button
           {...props}

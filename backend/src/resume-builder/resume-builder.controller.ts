@@ -29,6 +29,8 @@ import { extname } from 'path';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResumeBuilderService } from './resume-builder.service';
 import { CreateResumeDto, UpdateResumeSectionDto, RegenerateSectionDto } from './dto/create-resume.dto';
+import { UpdateResumeDto, CreateShareLinkDto } from './dto/resume-operations.dto';
+import { Public } from '../common/decorators/public.decorator';
 import * as fs from 'fs/promises';
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
@@ -47,7 +49,7 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
 @Controller('resume-builder')
 @UseGuards(JwtAuthGuard)
 export class ResumeBuilderController {
-  constructor(private readonly resumeBuilderService: ResumeBuilderService) {}
+  constructor(private readonly resumeBuilderService: ResumeBuilderService) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all resumes for the authenticated user' })
@@ -130,7 +132,7 @@ export class ResumeBuilderController {
   async getPDF(@Param('id') id: string, @Request() req, @Res() res: Response) {
     try {
       const pdfPath = await this.resumeBuilderService.getPDFPath(id, req.user._id.toString());
-      
+
       try {
         await fs.access(pdfPath);
       } catch {
@@ -138,7 +140,7 @@ export class ResumeBuilderController {
       }
 
       const pdfBuffer = await fs.readFile(pdfPath);
-      
+
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="resume-${id}.pdf"`);
       res.send(pdfBuffer);
@@ -171,6 +173,44 @@ export class ResumeBuilderController {
     return resume;
   }
 
+  @Patch(':id/autosave')
+  @ApiOperation({ summary: 'Autosave resume with optimistic locking' })
+  @ApiResponse({ status: 200, description: 'Resume saved' })
+  @ApiResponse({ status: 409, description: 'Conflict - Resume modified by another process' })
+  async autosave(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateResumeDto,
+    @Request() req,
+  ) {
+    return this.resumeBuilderService.autosave(id, req.user._id.toString(), updateDto);
+  }
+
+  @Post(':id/versions')
+  @ApiOperation({ summary: 'Create a named version/snapshot' })
+  async createVersion(
+    @Param('id') id: string,
+    @Body('description') description: string,
+    @Request() req,
+  ) {
+    return this.resumeBuilderService.createVersion(id, req.user._id.toString(), description);
+  }
+
+  @Get(':id/versions')
+  @ApiOperation({ summary: 'Get version history' })
+  async getVersions(@Param('id') id: string, @Request() req) {
+    return this.resumeBuilderService.getVersions(id, req.user._id.toString());
+  }
+
+  @Post(':id/share')
+  @ApiOperation({ summary: 'Create or update share link' })
+  async share(
+    @Param('id') id: string,
+    @Body() shareDto: CreateShareLinkDto,
+    @Request() req,
+  ) {
+    return this.resumeBuilderService.createShareLink(id, req.user._id.toString(), shareDto);
+  }
+
   @Post(':id/regenerate-section')
   @ApiOperation({ summary: 'Regenerate a section using AI' })
   @ApiResponse({ status: 200, description: 'Section regenerated successfully' })
@@ -194,7 +234,7 @@ export class ResumeBuilderController {
   async generatePDF(@Param('id') id: string, @Request() req) {
     const resume = await this.resumeBuilderService.findOne(id, req.user._id.toString());
     const pdfPath = await this.resumeBuilderService.generatePDF(resume);
-    
+
     resume.pdfPath = pdfPath;
     resume.pdfUrl = `/api/resume-builder/${resume._id}/pdf`;
     await resume.save();
@@ -203,6 +243,16 @@ export class ResumeBuilderController {
       pdfUrl: resume.pdfUrl,
       message: 'PDF generated successfully',
     };
+  }
+
+  @Public()
+  @Post('shared/:slug/view')
+  @ApiOperation({ summary: 'View a shared resume' })
+  async viewShared(
+    @Param('slug') slug: string,
+    @Body('password') password?: string,
+  ) {
+    return this.resumeBuilderService.getSharedResume(slug, password);
   }
 
   @Delete(':id')

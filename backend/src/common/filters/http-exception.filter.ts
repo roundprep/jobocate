@@ -4,74 +4,84 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
-  Injectable,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AppLoggerService } from '../logger/logger.service';
 
-@Injectable()
+interface ErrorResponse {
+  statusCode: number;
+  message: string | string[];
+  error: string;
+  timestamp: string;
+  path: string;
+  correlationId?: string;
+}
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   constructor(private readonly logger: AppLoggerService) {
     this.logger.setContext('HttpExceptionFilter');
   }
 
-  catch(exception: any, host: ArgumentsHost) {
+  catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest();
+    const request = ctx.getRequest<Request>();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
+    let status: number;
+    let message: string | string[];
+    let error: string;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
-      message =
-        typeof exceptionResponse === 'string'
-          ? exceptionResponse
-          : (exceptionResponse as any).message || exception.message;
-    } else if (exception.name === 'ValidationError') {
-      status = HttpStatus.BAD_REQUEST;
-      message = exception.message;
-    } else if (exception.code === 11000) {
-      status = HttpStatus.BAD_REQUEST;
-      message = 'Duplicate entry found';
-    } else if (exception.name === 'JsonWebTokenError') {
-      status = HttpStatus.UNAUTHORIZED;
-      message = 'Invalid token';
-    } else if (exception.message) {
-      message = exception.message;
-    }
 
-    // Log error with appropriate level
-    const errorDetails = {
-      statusCode: status,
-      path: request.url,
-      method: request.method,
-      message,
-      stack: exception.stack,
-    };
+      if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+        const responseObj = exceptionResponse as Record<string, any>;
+        message = responseObj.message || exception.message;
+        error = responseObj.error || 'Error';
+      } else {
+        message = exception.message;
+        error = 'Error';
+      }
+    } else if (exception instanceof Error) {
+      status = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Internal server error';
+      error = 'Internal Server Error';
 
-    if (status >= 500) {
+      // Log the actual error for debugging
       this.logger.error(
-        `HTTP ${status} Error: ${message}`,
-        exception.stack,
-        'HttpExceptionFilter',
+        {
+          error: exception.message,
+          stack: exception.stack,
+          path: request.url,
+          method: request.method,
+        },
+        'Unhandled exception',
       );
     } else {
-      this.logger.warn(
-        `HTTP ${status} Error: ${message} - ${request.method} ${request.url}`,
-        'HttpExceptionFilter',
-      );
+      status = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Internal server error';
+      error = 'Internal Server Error';
     }
 
-    response.status(status).json({
+    const errorResponse: ErrorResponse = {
       statusCode: status,
+      message,
+      error,
       timestamp: new Date().toISOString(),
       path: request.url,
-      error: message,
-    });
+      correlationId: (request as any).correlationId,
+    };
+
+    // Log error response
+    if (status >= 500) {
+      this.logger.error({ ...errorResponse }, 'Server error');
+    } else if (status >= 400) {
+      this.logger.warn({ ...errorResponse }, 'Client error');
+    }
+
+    response.status(status).json(errorResponse);
   }
 }
 
