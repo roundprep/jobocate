@@ -54,7 +54,7 @@ export function SidebarLayout({ navbar, sidebar, children, isCollapsed = false }
       <aside
         className={`fixed inset-y-0 left-0 z-50 hidden lg:block transition-all duration-300 ${isCollapsed ? 'lg:w-16' : 'lg:w-64'}`}
       >
-        <div className="h-full overflow-y-auto">
+        <div className="h-full">
           {sidebar}
         </div>
       </aside>

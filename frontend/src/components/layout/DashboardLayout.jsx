@@ -120,7 +120,7 @@ export default function DashboardLayout({ children }) {
             {/* Header with logo and theme switcher */}
             <SidebarHeader className={`${isCollapsed ? 'p-3' : 'p-5'} border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900`}>
               {isCollapsed ? (
-                <div className="flex flex-col items-center gap-3">
+                <div className="flex flex-col items-center gap-4">
                   <div className="relative group">
                     <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-white font-bold text-lg shadow-lg shadow-primary-500/20 transition-transform group-hover:scale-105">
                       JO
@@ -133,6 +133,7 @@ export default function DashboardLayout({ children }) {
                       <ChevronRightIcon className="h-3.5 w-3.5 text-zinc-700 dark:text-zinc-300" />
                     </button>
                   </div>
+                  <ThemeSwitcher />
                 </div>
               ) : (
                 <div className="flex items-center justify-between">

@@ -7,70 +7,12 @@ import { SunIcon, MoonIcon, ComputerDesktopIcon } from '@heroicons/react/24/outl
 
 export default function ThemeSwitcher() {
   const [mounted, setMounted] = useState(false);
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
-
-  // Force theme update function
-  const applyTheme = (themeValue) => {
-    const root = document.documentElement;
-    const body = document.body;
-    
-    // Determine actual theme value
-    let actualTheme = themeValue;
-    if (themeValue === 'system') {
-      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      actualTheme = systemPrefersDark ? 'dark' : 'light';
-    }
-    
-    // Remove dark class completely from both html and body
-    root.classList.remove('dark');
-    body.classList.remove('dark');
-    
-    // Apply theme based on actual value
-    if (actualTheme === 'dark') {
-      root.classList.add('dark');
-      body.classList.add('dark');
-    } else {
-      // Ensure dark class is removed for light theme
-      root.classList.remove('dark');
-      body.classList.remove('dark');
-    }
-    
-    // Update data attribute as well (some libraries use this)
-    root.setAttribute('data-theme', actualTheme);
-    
-    // Force a repaint to ensure styles are applied
-    void root.offsetHeight;
-  };
 
   useEffect(() => {
     setMounted(true);
-    
-    // Ensure initial theme is applied
-    const storedTheme = localStorage.getItem('jobocate-theme') || 'light';
-    applyTheme(storedTheme);
   }, []);
-
-  // Force theme update when theme changes
-  useEffect(() => {
-    if (!mounted) return;
-    
-    const currentTheme = resolvedTheme || theme || 'light';
-    applyTheme(currentTheme);
-  }, [theme, resolvedTheme, mounted]);
-
-  // Listen for system theme changes when system theme is active
-  useEffect(() => {
-    if (!mounted || theme !== 'system') return;
-    
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = (e) => {
-      applyTheme('system');
-    };
-    
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme, mounted]);
 
   if (!mounted) {
     return (
@@ -88,34 +30,9 @@ export default function ThemeSwitcher() {
   const currentThemeOption = themes.find(t => t.value === currentTheme) || themes[0];
   const CurrentIcon = currentThemeOption.icon;
 
-  const handleThemeChange = async (newTheme) => {
-    setIsOpen(false);
-    
-    // Update localStorage first
-    localStorage.setItem('jobocate-theme', newTheme);
-    
-    // Force immediate DOM update - do this multiple times to ensure it sticks
-    applyTheme(newTheme);
-    
-    // Then set theme using next-themes
+  const handleThemeChange = (newTheme) => {
     setTheme(newTheme);
-    
-    // Force multiple updates to ensure it sticks
-    requestAnimationFrame(() => {
-      applyTheme(newTheme);
-    });
-    
-    setTimeout(() => {
-      applyTheme(newTheme);
-    }, 10);
-    
-    setTimeout(() => {
-      applyTheme(newTheme);
-    }, 100);
-    
-    // Force a re-render by dispatching a custom event
-    window.dispatchEvent(new Event('theme-change'));
-    window.dispatchEvent(new Event('storage'));
+    setIsOpen(false);
   };
 
   return (
@@ -143,7 +60,7 @@ export default function ThemeSwitcher() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10, scale: 0.95 }}
               transition={{ duration: 0.2 }}
-              className="absolute right-0 mt-2 w-40 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-xl py-1 z-[101]"
+              className="absolute left-0 mt-2 w-40 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-xl py-1 z-[101]"
             >
               {themes.map((themeOption) => {
                 const Icon = themeOption.icon;
