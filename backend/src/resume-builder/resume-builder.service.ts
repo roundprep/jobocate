@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, ConflictException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Resume, ResumeDocument } from '../schemas/resume.schema';
@@ -15,6 +15,7 @@ import { ShareLink, ShareLinkDocument } from '../schemas/share-link.schema';
 import { UpdateResumeDto, CreateShareLinkDto } from './dto/resume-operations.dto';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcryptjs';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class ResumeBuilderService {
@@ -32,6 +33,7 @@ export class ResumeBuilderService {
     private shareLinkModel: Model<ShareLinkDocument>,
     private aiProviderService: AiProviderService,
     private resumeParserService: ResumeParserService,
+    private jwtService: JwtService,
   ) {
     this.ensureUploadsDirectory();
   }
@@ -354,11 +356,15 @@ Provide enhanced education entries with:
     }
   }
 
-  async generatePDF(resume: ResumeDocument): Promise<string> {
+  async generatePDF(resume: ResumeDocument, userId?: string): Promise<string> {
+    let browser;
     try {
+      this.logger.debug(`Starting PDF generation for resume ${resume._id}`);
+      
       // Launch puppeteer
       // In production/docker, might need args like --no-sandbox
-      const browser = await require('puppeteer').launch({
+      this.logger.debug('Launching Puppeteer browser...');
+      browser = await require('puppeteer').launch({
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
         headless: 'new'
       });
@@ -375,17 +381,62 @@ Provide enhanced education entries with:
       // Navigate to the new preview route
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
       
+      // Generate a temporary token for Puppeteer to access the preview page
+      let previewUrl = `${frontendUrl}/resume/preview/${resume._id}`;
+      if (userId) {
+        try {
+          const user = await this.userModel.findById(userId);
+          if (user) {
+            const payload = {
+              id: user._id.toString(),
+              email: user.email,
+              name: user.name,
+              role: user.role,
+            };
+            const token = this.jwtService.sign(payload, { expiresIn: '5m' }); // Short-lived token for PDF generation
+            previewUrl = `${previewUrl}?token=${encodeURIComponent(token)}`;
+            this.logger.debug('Generated token for PDF preview', {
+              tokenLength: token.length,
+              tokenPreview: token.substring(0, 20) + '...',
+              previewUrl: previewUrl.replace(/\?token=[^&]+/, '?token=***'),
+            });
+          }
+        } catch (tokenError) {
+          this.logger.warn('Failed to generate token for preview, proceeding without token:', tokenError);
+        }
+      }
+      
+      this.logger.debug(`Navigating to preview URL: ${previewUrl.replace(/\?token=[^&]+/, '?token=***')}`);
+      
       // Use the new preview page that renders ModernResumePreview
-      await page.goto(`${frontendUrl}/resume/preview/${resume._id}`, {
+      // Note: The preview page should handle authentication via localStorage or query token
+      const response = await page.goto(previewUrl, {
         waitUntil: 'networkidle0',
         timeout: 30000,
       });
 
+      if (!response || !response.ok()) {
+        const status = response?.status() || 'unknown';
+        throw new Error(`Failed to load preview page: HTTP ${status}`);
+      }
+
+      this.logger.debug('Preview page loaded, waiting for resumeReady signal...');
+
       // Wait for resume to be fully loaded (signal from frontend)
-      await page.waitForFunction(() => window.resumeReady === true, { timeout: 10000 });
+      try {
+        await page.waitForFunction(() => {
+          return (window as any).resumeReady === true;
+        }, { timeout: 15000 });
+        this.logger.debug('Resume ready signal received');
+      } catch (waitError) {
+        this.logger.warn('Resume ready signal timeout, proceeding anyway...');
+        // Continue anyway, the page might still be ready
+      }
 
       // Additional wait to ensure all fonts and styles are loaded
-      await page.waitForTimeout(1000);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      this.logger.debug('Generating PDF...');
 
       // Generate PDF with exact A4 dimensions
       const pdfBuffer = await page.pdf({
@@ -396,18 +447,35 @@ Provide enhanced education entries with:
         scale: 0.5, // Scale down the 2x viewport to normal size for crisp rendering
       });
 
+      this.logger.debug(`PDF generated, size: ${pdfBuffer.length} bytes`);
+
       await browser.close();
+      browser = null;
 
       // Save PDF
       const filename = `resume-${resume._id}-${Date.now()}.pdf`;
       const filepath = path.join(this.uploadsDir, filename);
 
       await fs.writeFile(filepath, pdfBuffer);
+      this.logger.debug(`PDF saved to: ${filepath}`);
 
       return filepath;
     } catch (error) {
+      if (browser) {
+        try {
+          await browser.close();
+        } catch (closeError) {
+          this.logger.error('Error closing browser:', closeError);
+        }
+      }
+      
       this.logger.error('Error generating PDF:', error);
-      throw new Error('Failed to generate PDF');
+      this.logger.error('Error details:', {
+        message: error?.message,
+        stack: error?.stack,
+        name: error?.name,
+      });
+      throw new Error(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
     }
   }
 

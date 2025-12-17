@@ -233,7 +233,7 @@ export class ResumeBuilderController {
   @ApiResponse({ status: 200, description: 'PDF generated successfully' })
   async generatePDF(@Param('id') id: string, @Request() req) {
     const resume = await this.resumeBuilderService.findOne(id, req.user._id.toString());
-    const pdfPath = await this.resumeBuilderService.generatePDF(resume);
+    const pdfPath = await this.resumeBuilderService.generatePDF(resume, req.user._id.toString());
 
     resume.pdfPath = pdfPath;
     resume.pdfUrl = `/api/resume-builder/${resume._id}/pdf`;
