@@ -30,38 +30,6 @@ export default function Document() {
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
-        
-        {/* Theme initialization script - prevents FOUC */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var theme = localStorage.getItem('jobocate-theme') || 'light';
-                  var root = document.documentElement;
-                  
-                  // Remove dark class first
-                  root.classList.remove('dark');
-                  
-                  // Apply theme
-                  if (theme === 'dark') {
-                    root.classList.add('dark');
-                  } else if (theme === 'system') {
-                    var systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                    if (systemPrefersDark) {
-                      root.classList.add('dark');
-                    } else {
-                      root.classList.remove('dark');
-                    }
-                  } else {
-                    // Light theme - ensure dark is removed
-                    root.classList.remove('dark');
-                  }
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
       </Head>
       <body className="antialiased" suppressHydrationWarning>
         <Main />
