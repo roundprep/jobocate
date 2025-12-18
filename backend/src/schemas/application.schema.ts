@@ -55,6 +55,24 @@ export class Application {
 
   @Prop()
   proofSubmittedAt?: Date;
+
+  @Prop({
+    type: [
+      {
+        status: String,
+        timestamp: Date,
+        notes: String,
+        changedBy: String, // 'system', 'user', 'agent'
+      },
+    ],
+    default: [],
+  })
+  statusTimeline?: Array<{
+    status: string;
+    timestamp: Date;
+    notes?: string;
+    changedBy?: string;
+  }>;
 }
 
 export const ApplicationSchema = SchemaFactory.createForClass(Application);

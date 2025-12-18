@@ -21,7 +21,7 @@ export class PlanEntitlement {
   @Prop({ type: MongooseSchema.Types.Mixed, required: true })
   value: boolean | number | string;
 
-  @Prop({ type: Object })
+  @Prop({ type: Object, required: false })
   metadata?: Record<string, any>;
 }
 

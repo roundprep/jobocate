@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/context/AuthContext';
 import { API_URL } from '@/config/api';
@@ -25,6 +27,8 @@ import {
   ArrowLeftIcon,
   EllipsisVerticalIcon,
   CameraIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/catalyst/button';
 import { Field, FieldGroup, Label } from '@/components/catalyst/fieldset';
@@ -78,6 +82,10 @@ const WIZARD_STEPS = {
   TEMPLATE: 'template',
   UPLOAD_OR_NEW: 'upload-or-new',
   EDITOR: 'editor', // New unified editor with tabs
+  EXPERT_REVIEW: 'expert-review', // Expert review options after resume creation
+  TARGET_POSITIONS: 'target-positions', // Target positions, location, salary screen
+  ACTION_OPTIONS: 'action-options', // Email or apply options
+  MATCHING_JOBS: 'matching-jobs', // Show matching jobs for application
   PERSONAL: 'personal',
   SUMMARY: 'summary',
   SKILLS: 'skills',
@@ -108,6 +116,8 @@ const templates = [
     preview: '/resume-templates/modern.png', // Path in public folder
     color: 'blue',
     category: 'Popular',
+    company: 'Ogilvy',
+    isPro: false, // Free template
   },
   {
     id: 'professional',
@@ -116,6 +126,8 @@ const templates = [
     preview: '/resume-templates/professional.png',
     color: 'zinc',
     category: 'Classic',
+    company: 'Palantir',
+    isPro: true,
   },
   {
     id: 'creative',
@@ -124,6 +136,8 @@ const templates = [
     preview: '/resume-templates/creative.png',
     color: 'purple',
     category: 'Creative',
+    company: 'Kirkland & Ellis',
+    isPro: true,
   },
   {
     id: 'minimal',
@@ -132,6 +146,8 @@ const templates = [
     preview: '/resume-templates/minimal.png',
     color: 'gray',
     category: 'Simple',
+    company: 'Mailchimp',
+    isPro: true,
   },
   {
     id: 'executive',
@@ -140,6 +156,8 @@ const templates = [
     preview: '/resume-templates/executive.png',
     color: 'indigo',
     category: 'Executive',
+    company: 'Netflix',
+    isPro: true,
   },
   {
     id: 'ats-friendly',
@@ -148,11 +166,227 @@ const templates = [
     preview: '/resume-templates/ats-friendly.png',
     color: 'green',
     category: 'ATS',
+    company: 'Brex',
+    isPro: true,
   },
+  {
+    id: 'tech',
+    name: 'Tech',
+    description: 'Modern design for technology professionals',
+    preview: '/resume-templates/modern.png',
+    color: 'blue',
+    category: 'Tech',
+    company: 'Allbirds',
+    isPro: true,
+  },
+  {
+    id: 'finance',
+    name: 'Finance',
+    description: 'Professional layout for finance roles',
+    preview: '/resume-templates/professional.png',
+    color: 'zinc',
+    category: 'Finance',
+    company: 'Palo Alto Networks',
+    isPro: true,
+  },
+  {
+    id: 'startup',
+    name: 'Startup',
+    description: 'Dynamic design for startup culture',
+    preview: '/resume-templates/creative.png',
+    color: 'purple',
+    category: 'Startup',
+    company: 'DoorDash',
+    isPro: true,
+  },
+  {
+    id: 'corporate',
+    name: 'Corporate',
+    description: 'Traditional corporate layout',
+    preview: '/resume-templates/executive.png',
+    color: 'indigo',
+    category: 'Corporate',
+    company: 'BlackRock',
+    isPro: true,
+  },
+];
+
+const industries = [
+  { value: 'all', label: 'All Industries' },
+  { value: 'tech', label: 'Technology' },
+  { value: 'finance', label: 'Finance' },
+  { value: 'design', label: 'Design' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'consulting', label: 'Consulting' },
+  { value: 'healthcare', label: 'Healthcare' },
+];
+
+// Countries with their currencies
+const countries = [
+  { name: 'United States', code: 'US', currency: 'USD', flag: '🇺🇸' },
+  { name: 'United Kingdom', code: 'GB', currency: 'GBP', flag: '🇬🇧' },
+  { name: 'Canada', code: 'CA', currency: 'CAD', flag: '🇨🇦' },
+  { name: 'Australia', code: 'AU', currency: 'AUD', flag: '🇦🇺' },
+  { name: 'Germany', code: 'DE', currency: 'EUR', flag: '🇩🇪' },
+  { name: 'France', code: 'FR', currency: 'EUR', flag: '🇫🇷' },
+  { name: 'Netherlands', code: 'NL', currency: 'EUR', flag: '🇳🇱' },
+  { name: 'Ireland', code: 'IE', currency: 'EUR', flag: '🇮🇪' },
+  { name: 'Spain', code: 'ES', currency: 'EUR', flag: '🇪🇸' },
+  { name: 'Italy', code: 'IT', currency: 'EUR', flag: '🇮🇹' },
+  { name: 'Switzerland', code: 'CH', currency: 'CHF', flag: '🇨🇭' },
+  { name: 'Sweden', code: 'SE', currency: 'SEK', flag: '🇸🇪' },
+  { name: 'Norway', code: 'NO', currency: 'NOK', flag: '🇳🇴' },
+  { name: 'Denmark', code: 'DK', currency: 'DKK', flag: '🇩🇰' },
+  { name: 'India', code: 'IN', currency: 'INR', flag: '🇮🇳' },
+  { name: 'Singapore', code: 'SG', currency: 'SGD', flag: '🇸🇬' },
+  { name: 'Japan', code: 'JP', currency: 'JPY', flag: '🇯🇵' },
+  { name: 'South Korea', code: 'KR', currency: 'KRW', flag: '🇰🇷' },
+  { name: 'Hong Kong', code: 'HK', currency: 'HKD', flag: '🇭🇰' },
+  { name: 'United Arab Emirates', code: 'AE', currency: 'AED', flag: '🇦🇪' },
+  { name: 'Israel', code: 'IL', currency: 'ILS', flag: '🇮🇱' },
+  { name: 'Brazil', code: 'BR', currency: 'BRL', flag: '🇧🇷' },
+  { name: 'Mexico', code: 'MX', currency: 'MXN', flag: '🇲🇽' },
+  { name: 'Remote / Anywhere', code: 'REMOTE', currency: 'USD', flag: '🌍' },
+];
+
+// Currency symbols mapping
+const currencySymbols = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  INR: '₹',
+  CAD: 'C$',
+  AUD: 'A$',
+  CHF: 'CHF',
+  SEK: 'kr',
+  NOK: 'kr',
+  DKK: 'kr',
+  SGD: 'S$',
+  JPY: '¥',
+  KRW: '₩',
+  HKD: 'HK$',
+  AED: 'AED',
+  ILS: '₪',
+  BRL: 'R$',
+  MXN: '$',
+};
+
+// Cities by country
+const citiesByCountry = {
+  'United States': [
+    'New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ',
+    'Philadelphia, PA', 'San Antonio, TX', 'San Diego, CA', 'Dallas, TX', 'San Jose, CA',
+    'Austin, TX', 'Jacksonville, FL', 'San Francisco, CA', 'Columbus, OH', 'Fort Worth, TX',
+    'Charlotte, NC', 'Seattle, WA', 'Denver, CO', 'Washington, DC', 'Boston, MA',
+    'Remote / Anywhere'
+  ],
+  'United Kingdom': [
+    'London', 'Manchester', 'Birmingham', 'Glasgow', 'Liverpool',
+    'Leeds', 'Edinburgh', 'Bristol', 'Cardiff', 'Belfast',
+    'Newcastle', 'Sheffield', 'Remote / Anywhere'
+  ],
+  'Canada': [
+    'Toronto, ON', 'Vancouver, BC', 'Montreal, QC', 'Calgary, AB', 'Ottawa, ON',
+    'Edmonton, AB', 'Winnipeg, MB', 'Quebec City, QC', 'Hamilton, ON', 'Kitchener, ON',
+    'Remote / Anywhere'
+  ],
+  'Australia': [
+    'Sydney, NSW', 'Melbourne, VIC', 'Brisbane, QLD', 'Perth, WA', 'Adelaide, SA',
+    'Gold Coast, QLD', 'Canberra, ACT', 'Newcastle, NSW', 'Remote / Anywhere'
+  ],
+  'Germany': [
+    'Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Cologne',
+    'Stuttgart', 'Düsseldorf', 'Dortmund', 'Essen', 'Leipzig',
+    'Remote / Anywhere'
+  ],
+  'France': [
+    'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice',
+    'Nantes', 'Strasbourg', 'Montpellier', 'Bordeaux', 'Lille',
+    'Remote / Anywhere'
+  ],
+  'Netherlands': [
+    'Amsterdam', 'Rotterdam', 'The Hague', 'Utrecht', 'Eindhoven',
+    'Groningen', 'Tilburg', 'Almere', 'Breda', 'Nijmegen',
+    'Remote / Anywhere'
+  ],
+  'Ireland': [
+    'Dublin', 'Cork', 'Limerick', 'Galway', 'Waterford',
+    'Drogheda', 'Dundalk', 'Swords', 'Remote / Anywhere'
+  ],
+  'Spain': [
+    'Madrid', 'Barcelona', 'Valencia', 'Seville', 'Zaragoza',
+    'Málaga', 'Murcia', 'Palma', 'Las Palmas', 'Bilbao',
+    'Remote / Anywhere'
+  ],
+  'Italy': [
+    'Rome', 'Milan', 'Naples', 'Turin', 'Palermo',
+    'Genoa', 'Bologna', 'Florence', 'Bari', 'Catania',
+    'Remote / Anywhere'
+  ],
+  'Switzerland': [
+    'Zurich', 'Geneva', 'Basel', 'Bern', 'Lausanne',
+    'St. Gallen', 'Lucerne', 'Lugano', 'Remote / Anywhere'
+  ],
+  'Sweden': [
+    'Stockholm', 'Gothenburg', 'Malmö', 'Uppsala', 'Västerås',
+    'Örebro', 'Linköping', 'Helsingborg', 'Remote / Anywhere'
+  ],
+  'Norway': [
+    'Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Bærum',
+    'Kristiansand', 'Fredrikstad', 'Remote / Anywhere'
+  ],
+  'Denmark': [
+    'Copenhagen', 'Aarhus', 'Odense', 'Aalborg', 'Esbjerg',
+    'Randers', 'Kolding', 'Remote / Anywhere'
+  ],
+  'India': [
+    'Bangalore', 'Mumbai', 'Delhi', 'Hyderabad', 'Chennai',
+    'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Surat',
+    'Remote / Anywhere'
+  ],
+  'Singapore': [
+    'Singapore', 'Remote / Anywhere'
+  ],
+  'Japan': [
+    'Tokyo', 'Yokohama', 'Osaka', 'Nagoya', 'Sapporo',
+    'Fukuoka', 'Kobe', 'Kyoto', 'Remote / Anywhere'
+  ],
+  'South Korea': [
+    'Seoul', 'Busan', 'Incheon', 'Daegu', 'Daejeon',
+    'Gwangju', 'Ulsan', 'Remote / Anywhere'
+  ],
+  'Hong Kong': [
+    'Hong Kong', 'Remote / Anywhere'
+  ],
+  'United Arab Emirates': [
+    'Dubai', 'Abu Dhabi', 'Sharjah', 'Al Ain', 'Remote / Anywhere'
+  ],
+  'Israel': [
+    'Tel Aviv', 'Jerusalem', 'Haifa', 'Rishon LeZion', 'Petah Tikva',
+    'Ashdod', 'Netanya', 'Remote / Anywhere'
+  ],
+  'Brazil': [
+    'São Paulo', 'Rio de Janeiro', 'Brasília', 'Salvador', 'Fortaleza',
+    'Belo Horizonte', 'Manaus', 'Curitiba', 'Recife', 'Porto Alegre',
+    'Remote / Anywhere'
+  ],
+  'Mexico': [
+    'Mexico City', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana',
+    'León', 'Juárez', 'Torreón', 'Remote / Anywhere'
+  ],
+  'Remote / Anywhere': ['Remote / Anywhere']
+};
+
+// Job types
+const jobTypes = [
+  { value: 'full-time', label: 'Full-time', icon: '💼' },
+  { value: 'part-time', label: 'Part-time', icon: '⏰' },
+  { value: 'contract', label: 'Contract', icon: '📋' },
 ];
 
 export default function AIResumeBuilder() {
   const { user } = useAuth();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(WIZARD_STEPS.DASHBOARD); // Default to Dashboard
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploadMethod, setUploadMethod] = useState(null);
@@ -163,6 +397,11 @@ export default function AIResumeBuilder() {
   const [previousResumes, setPreviousResumes] = useState([]);
   const [loadingResumes, setLoadingResumes] = useState(false);
   const [showPreviousResumes, setShowPreviousResumes] = useState(false);
+  
+  // New state for dashboard tabs and filters
+  const [dashboardTab, setDashboardTab] = useState('sample-library'); // 'my-resumes' or 'sample-library'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIndustry, setSelectedIndustry] = useState('all');
 
   const [resumeData, setResumeData] = useState({
     name: 'My Resume',
@@ -206,6 +445,186 @@ export default function AIResumeBuilder() {
   const [activeTab, setActiveTab] = useState(EDITOR_TABS.CONTENT);
   const [editingSection, setEditingSection] = useState(null);
   const [editingIndex, setEditingIndex] = useState(null); // Track which index is being edited
+
+  // Fetch user plan/entitlements
+  useEffect(() => {
+    const fetchUserPlan = async () => {
+      if (!user) return;
+      try {
+        const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+        const response = await fetch(`${API_URL}/api/entitlements`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUserPlan(data.planType || 'FREE');
+        }
+      } catch (error) {
+        console.error('Error fetching user plan:', error);
+      }
+    };
+    fetchUserPlan();
+  }, [user]);
+
+  // Browser History API integration for wizard navigation
+  const navigateToStep = useCallback((step, replace = false) => {
+    const query = { ...router.query, step };
+    
+    // Add resume ID to URL if we're in editor and have a current resume
+    if (step === WIZARD_STEPS.EDITOR && currentResume) {
+      const resumeId = currentResume._id || currentResume.id;
+      if (resumeId) {
+        query.resume = resumeId;
+      }
+    } else if (step !== WIZARD_STEPS.EDITOR && query.resume) {
+      // Remove resume ID from URL if we're not in editor
+      delete query.resume;
+    }
+    
+    if (replace) {
+      router.replace({ pathname: router.pathname, query }, undefined, { shallow: true });
+    } else {
+      router.push({ pathname: router.pathname, query }, undefined, { shallow: true });
+    }
+    setCurrentStep(step);
+  }, [router, currentResume]);
+
+  // Check if user can access PRO template
+  const canAccessProTemplate = (template) => {
+    if (!template.isPro) return true;
+    return userPlan === 'PRO' || userPlan === 'ELITE' || userPlan === 'INTERVIEW';
+  };
+
+  // Check required blocks completeness - memoized to prevent infinite loops
+  const completenessValue = useMemo(() => ({
+    personal: !!(resumeData.fullName && resumeData.email),
+    experience: resumeData.experience && resumeData.experience.length > 0,
+    education: resumeData.education && resumeData.education.length > 0,
+  }), [resumeData.fullName, resumeData.email, resumeData.experience?.length, resumeData.education?.length]);
+
+  // Update completeness state only when it actually changes
+  useEffect(() => {
+    if (currentStep === WIZARD_STEPS.EDITOR && currentResume) {
+      setResumeCompleteness(prev => {
+        const hasChanged = Object.keys(completenessValue).some(
+          key => prev[key] !== completenessValue[key]
+        );
+        return hasChanged ? completenessValue : prev;
+      });
+    }
+  }, [completenessValue, currentStep, currentResume]);
+
+  // Check if resume is complete
+  const checkResumeCompleteness = useCallback(() => {
+    return Object.values(completenessValue).every(v => v === true);
+  }, [completenessValue]);
+
+  // Handle template switch with entitlement check
+  const handleTemplateSwitch = (templateId) => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template) return;
+
+    if (template.isPro && !canAccessProTemplate(template)) {
+      setSelectedProTemplate(template);
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    setSelectedTemplate(templateId);
+    // Update resume template in backend
+    if (currentResume) {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      fetch(`${API_URL}/api/resume-builder/${currentResume._id || currentResume.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ template: templateId }),
+      }).catch(err => console.error('Error updating template:', err));
+    }
+  };
+
+  // Sync URL with current step on mount and route changes
+  useEffect(() => {
+    if (!router.isReady) return;
+    
+    const stepFromUrl = router.query.step;
+    const resumeIdFromUrl = router.query.resume;
+    
+    // If resume ID is in URL and we don't have current resume, load it
+    if (resumeIdFromUrl && typeof resumeIdFromUrl === 'string' && (!currentResume || (currentResume._id !== resumeIdFromUrl && currentResume.id !== resumeIdFromUrl))) {
+      // Load resume by ID
+      const loadResumeById = async () => {
+        try {
+          const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+          const response = await fetch(`${API_URL}/api/resume-builder/${resumeIdFromUrl}`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            handleEditResume(data);
+          }
+        } catch (error) {
+          console.error('Error loading resume from URL:', error);
+        }
+      };
+      loadResumeById();
+    }
+    
+    if (stepFromUrl && typeof stepFromUrl === 'string' && Object.values(WIZARD_STEPS).includes(stepFromUrl)) {
+      setCurrentStep(stepFromUrl);
+    } else if (!stepFromUrl) {
+      // Set initial URL if no step in query
+      const query = { ...router.query, step: WIZARD_STEPS.DASHBOARD };
+      if (currentResume) {
+        const resumeId = currentResume._id || currentResume.id;
+        if (resumeId) query.resume = resumeId;
+      }
+      router.replace({ 
+        pathname: router.pathname, 
+        query
+      }, undefined, { shallow: true });
+    }
+  }, [router.isReady, router.query.step, router.query.resume]);
+
+  // Update URL when step or resume changes (but not from URL change)
+  useEffect(() => {
+    if (!router.isReady) return;
+    
+    const query = { ...router.query };
+    let shouldUpdate = false;
+    
+    if (query.step !== currentStep) {
+      query.step = currentStep;
+      shouldUpdate = true;
+    }
+    
+    // Update resume ID in URL if we have a current resume and we're in editor
+    if (currentStep === WIZARD_STEPS.EDITOR && currentResume) {
+      const resumeId = currentResume._id || currentResume.id;
+      if (resumeId && query.resume !== resumeId) {
+        query.resume = resumeId;
+        shouldUpdate = true;
+      }
+    } else if (query.resume && currentStep !== WIZARD_STEPS.EDITOR) {
+      // Remove resume from URL if we're not in editor
+      delete query.resume;
+      shouldUpdate = true;
+    }
+    
+    if (shouldUpdate) {
+      router.replace({ 
+        pathname: router.pathname, 
+        query
+      }, undefined, { shallow: true });
+    }
+  }, [currentStep, currentResume, router.isReady]);
   const [showAddBlockModal, setShowAddBlockModal] = useState(false);
   const [selectedBlockType, setSelectedBlockType] = useState(null);
   const [showResumeNameModal, setShowResumeNameModal] = useState(false);
@@ -214,6 +633,32 @@ export default function AIResumeBuilder() {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null);
   const [showPDFPreview, setShowPDFPreview] = useState(true); // Toggle between PDF and HTML preview
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [selectedProTemplate, setSelectedProTemplate] = useState(null);
+  const [userPlan, setUserPlan] = useState('FREE'); // Track user's plan
+  const [selectedReviewPackage, setSelectedReviewPackage] = useState(null);
+  const [targetPositions, setTargetPositions] = useState({
+    position: '',
+    country: '', // Single country selection
+    cities: [], // Multiple city selection
+    salaryMin: '',
+    salaryMax: '',
+    currency: 'USD',
+    salaryPeriod: 'year', // year, month, hour
+    jobType: '', // full-time, part-time, contract
+  });
+  const [countryQuery, setCountryQuery] = useState('');
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+  const [cityQuery, setCityQuery] = useState('');
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const [matchingJobs, setMatchingJobs] = useState([]);
+  const [loadingMatchingJobs, setLoadingMatchingJobs] = useState(false);
+  const [hasMatchingJobs, setHasMatchingJobs] = useState(false);
+  const [resumeCompleteness, setResumeCompleteness] = useState({
+    personal: false,
+    experience: false,
+    education: false,
+  });
   const [expandedSections, setExpandedSections] = useState({
     personal: true,
     summary: false,
@@ -561,8 +1006,19 @@ export default function AIResumeBuilder() {
   };
 
   const handleTemplateSelect = (templateId) => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template) return;
+
+    // If pro template and user doesn't have pro entitlement, show upgrade modal
+    if (template.isPro && !canAccessProTemplate(template)) {
+      setSelectedProTemplate(template);
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    // Free template or user has pro entitlement - show resume name modal
     setSelectedTemplate(templateId);
-    setCurrentStep(WIZARD_STEPS.UPLOAD_OR_NEW);
+    setShowResumeNameModal(true);
   };
 
   const handleMethodSelect = (method) => {
@@ -637,7 +1093,7 @@ export default function AIResumeBuilder() {
 
         setShowResumeNameModal(false);
         setResumeNameInput('');
-        setCurrentStep(WIZARD_STEPS.EDITOR);
+        navigateToStep(WIZARD_STEPS.EDITOR);
         toast.success('Resume uploaded and parsed successfully!');
         // Refresh previous resumes list
         fetchPreviousResumes();
@@ -755,7 +1211,7 @@ export default function AIResumeBuilder() {
 
         setShowResumeNameModal(false);
         setResumeNameInput('');
-        setCurrentStep(WIZARD_STEPS.EDITOR);
+        navigateToStep(WIZARD_STEPS.EDITOR);
         toast.success('Resume created successfully!');
         // Refresh previous resumes list
         fetchPreviousResumes();
@@ -1123,7 +1579,7 @@ export default function AIResumeBuilder() {
         // If we deleted the current resume, reset
         if (currentResume && (currentResume._id === id || currentResume.id === id)) {
           setCurrentResume(null);
-          setCurrentStep(WIZARD_STEPS.TEMPLATE);
+          navigateToStep(WIZARD_STEPS.TEMPLATE);
         }
       } else {
         const error = await response.json();
@@ -1206,7 +1662,7 @@ export default function AIResumeBuilder() {
         };
         setExpandedSections(expandedToSet);
 
-        setCurrentStep(WIZARD_STEPS.EDITOR);
+        navigateToStep(WIZARD_STEPS.EDITOR);
         setShowPreviousResumes(false);
         toast.success('Resume loaded for editing');
       } else {
@@ -1536,7 +1992,7 @@ export default function AIResumeBuilder() {
   const LivePreview = ({ templateSettings = { colorScheme: 'blue', fontFamily: 'inter' } }) => {
     // Color scheme mapping
     const colorSchemes = {
-      blue: { primary: 'text-blue-600', border: 'border-blue-600', bg: 'bg-blue-50' },
+      blue: { primary: 'text-primary-600', border: 'border-primary-600', bg: 'bg-primary-50' },
       green: { primary: 'text-green-600', border: 'border-green-600', bg: 'bg-green-50' },
       purple: { primary: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50' },
       orange: { primary: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50' },
@@ -1570,7 +2026,7 @@ export default function AIResumeBuilder() {
     };
 
     return (
-      <div className={`h-full w-full bg-white dark:bg-zinc-900 overflow-y-auto ${fontClass}`}>
+      <div className={`h-full w-full  bg-white dark:bg-zinc-900 overflow-y-auto ${fontClass}`}>
         <div className="sticky top-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 z-10 w-full">
           <div className="flex items-center justify-between">
             <div className="flex-1">
@@ -1751,140 +2207,120 @@ export default function AIResumeBuilder() {
       </Head>
       <DashboardLayout>
         <div className="min-h-screen bg-white dark:bg-zinc-900">
-          {/* Simplified Header - FlowCV Style - Full Width */}
-          <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-50 w-full">
-            <div className="w-full px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  {currentStep !== WIZARD_STEPS.DASHBOARD && currentStep !== WIZARD_STEPS.COMPLETE && (
-                    <Button
-                      onClick={() => {
-                        if (currentStep === WIZARD_STEPS.TEMPLATE) {
-                          setCurrentStep(WIZARD_STEPS.DASHBOARD);
-                        } else if (currentStep === WIZARD_STEPS.UPLOAD_OR_NEW) {
-                          setCurrentStep(WIZARD_STEPS.TEMPLATE);
-                        } else {
-                          setCurrentStep(prev => {
-                            const steps = [
-                              WIZARD_STEPS.TEMPLATE,
-                              WIZARD_STEPS.UPLOAD_OR_NEW,
-                              WIZARD_STEPS.PERSONAL_INFO,
-                              WIZARD_STEPS.SUMMARY,
-                              WIZARD_STEPS.EXPERIENCE,
-                              WIZARD_STEPS.EDUCATION,
-                              WIZARD_STEPS.SKILLS,
-                              WIZARD_STEPS.PREVIEW,
-                            ];
-                            const currentIndex = steps.indexOf(prev);
-                            return currentIndex > 0 ? steps[currentIndex - 1] : WIZARD_STEPS.TEMPLATE;
-                          });
-                        }
-                      }}
-                      plain
-                      className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200"
-                    >
-                      <ArrowLeftIcon className="h-5 w-5" />
-                    </Button>
-                  )}
-                  <div>
-                    <h1 className="text-xl font-semibold text-zinc-950 dark:text-white">Resume Builder</h1>
-                    {currentStep !== WIZARD_STEPS.TEMPLATE && currentStep !== WIZARD_STEPS.COMPLETE && (
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{getStepTitle()}</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                {currentStep !== WIZARD_STEPS.TEMPLATE && currentStep !== WIZARD_STEPS.UPLOAD_OR_NEW && currentResume && (
-                  <div className="flex items-center gap-2">
-                    {/* Template Settings Button */}
-                    <Button
-                      onClick={() => setShowTemplateSettings(true)}
-                      outline
-                      className="text-sm"
-                      title="Template Settings"
-                    >
-                      <PaintBrushIcon className="h-4 w-4" />
-                    </Button>
-                    {currentResume?.pdfUrl && (
-                      <>
-                        <Button
-                          onClick={handleViewPDF}
-                          outline
-                          className="text-sm"
-                        >
-                          <EyeIcon className="h-4 w-4" />
-                          Preview
-                        </Button>
-                        <Button
-                          onClick={handleDownloadPDF}
-                          outline
-                          className="text-sm"
-                        >
-                          <ArrowDownTrayIcon className="h-4 w-4" />
-                          Download
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      onClick={handleSave}
-                      color="blue"
-                      className="text-sm"
-                      disabled={isGenerating}
-                    >
-                      {isGenerating ? (
-                        <>
-                          <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Resume'
-                      )}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
 
           {/* Main Content - Full Width */}
-          <div className="w-full">
+          <div className="w-full px-8">
             {/* Dashboard Step - My Resumes Grid */}
             {currentStep === WIZARD_STEPS.DASHBOARD && (
-              <div className="w-full px-6 py-12 bg-zinc-50/50 dark:bg-zinc-900 min-h-[80vh]">
+              <div className="w-full px-6 py-8 bg-white dark:bg-zinc-900 min-h-[80vh]">
                 <div className="max-w-7xl mx-auto">
+                  {/* Header */}
                   <div className="flex items-center justify-between mb-8">
-                    <h2 className="text-3xl font-bold text-zinc-900 dark:text-white tracking-tight">My Resumes</h2>
-                    <Button onClick={() => setCurrentStep(WIZARD_STEPS.TEMPLATE)} color="blue">
-                      <PlusIcon className="w-4 h-4 mr-2" />
-                      New Resume
-                    </Button>
+                    <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Resume Builder</h1>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => navigateToStep(WIZARD_STEPS.UPLOAD_OR_NEW)} 
+                        className="px-4 py-2.5 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white border border-primary-300 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-400 dark:hover:border-primary-600 transition-colors text-sm font-medium flex items-center"
+                      >
+                        <CloudArrowUpIcon className="w-4 h-4 mr-2" />
+                        Upload
+                      </button>
+                      <button 
+                        onClick={() => navigateToStep(WIZARD_STEPS.TEMPLATE)} 
+                        className="px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors text-sm font-medium shadow-sm hover:shadow-md flex items-center"
+                      >
+                        <PlusIcon className="w-4 h-4 mr-2" />
+                        Create New
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {/* Create New Card */}
-                    <div
-                      onClick={() => setCurrentStep(WIZARD_STEPS.TEMPLATE)}
-                      className="group aspect-[3/4] border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-all duration-300"
+                  {/* Tabs */}
+                  <div className="flex items-center gap-8 border-b border-zinc-200 dark:border-zinc-800 mb-8">
+                    <button
+                      onClick={() => setDashboardTab('my-resumes')}
+                      className={`pb-4 px-1 text-sm font-semibold transition-all duration-200 relative ${
+                        dashboardTab === 'my-resumes'
+                          ? 'text-zinc-900 dark:text-white'
+                          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      }`}
                     >
-                      <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 transition-colors mb-4">
-                        <PlusIcon className="w-8 h-8 text-zinc-400 dark:text-zinc-500 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
-                      </div>
-                      <h3 className="text-lg font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-blue-700 dark:group-hover:text-blue-400">Create New Resume</h3>
-                      <p className="text-sm text-zinc-400 dark:text-zinc-500 mt-2">Start from a template</p>
-                    </div>
+                      My Resumes
+                      {dashboardTab === 'my-resumes' && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500"></span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setDashboardTab('sample-library')}
+                      className={`pb-4 px-1 text-sm font-semibold transition-all duration-200 relative ${
+                        dashboardTab === 'sample-library'
+                          ? 'text-zinc-900 dark:text-white'
+                          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                      }`}
+                    >
+                      Templates
+                      {dashboardTab === 'sample-library' && (
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500"></span>
+                      )}
+                    </button>
+                  </div>
 
-                    {/* Existing Resumes */}
-                    {loadingResumes ? (
-                      [1, 2, 3].map((_, i) => (
-                        <div key={i} className="aspect-[3/4] bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 animate-pulse">
-                          <div className="w-full h-3/4 bg-zinc-100 dark:bg-zinc-800 rounded-lg mb-4"></div>
-                          <div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded w-3/4 mb-2"></div>
-                          <div className="h-3 bg-zinc-100 dark:bg-zinc-800 rounded w-1/2"></div>
+                  {/* Search and Filter Bar - Only show for Templates */}
+                  {dashboardTab === 'sample-library' && (
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="flex-1 relative max-w-md">
+                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-zinc-400 dark:text-zinc-500" />
+                        <input
+                          type="text"
+                          placeholder="Search resume template"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all"
+                        />
+                      </div>
+                      <div className="relative">
+                        <select
+                          value={selectedIndustry}
+                          onChange={(e) => setSelectedIndustry(e.target.value)}
+                          className="appearance-none pl-4 pr-10 py-2.5 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 cursor-pointer transition-all min-w-[160px]"
+                        >
+                          {industries.map((industry) => (
+                            <option key={industry.value} value={industry.value}>
+                              {industry.label}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDownIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* My Resumes Tab Content */}
+                  {dashboardTab === 'my-resumes' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                      {/* Create New Card */}
+                      <div
+                        onClick={() => navigateToStep(WIZARD_STEPS.TEMPLATE)}
+                        className="group aspect-[3/4] border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary-500 dark:hover:border-primary-400 hover:bg-primary-50/50 dark:hover:bg-primary-900/20 transition-all duration-300"
+                      >
+                        <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center group-hover:bg-primary-100 dark:group-hover:bg-primary-900/30 transition-colors mb-4">
+                          <PlusIcon className="w-8 h-8 text-zinc-400 dark:text-zinc-500 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors" />
                         </div>
-                      ))
-                    ) : (
-                      previousResumes.map((resume) => (
+                        <h3 className="text-lg font-medium text-zinc-600 dark:text-zinc-300 group-hover:text-primary-700 dark:group-hover:text-primary-400">Create New Resume</h3>
+                        <p className="text-sm text-zinc-400 dark:text-zinc-500 mt-2">Start from a template</p>
+                      </div>
+
+                      {/* Existing Resumes */}
+                      {loadingResumes ? (
+                        [1, 2, 3, 4].map((_, i) => (
+                          <div key={i} className="aspect-[3/4] bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 animate-pulse">
+                            <div className="w-full h-3/4 bg-zinc-100 dark:bg-zinc-800 rounded-lg mb-4"></div>
+                            <div className="h-4 bg-zinc-100 dark:bg-zinc-800 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-zinc-100 dark:bg-zinc-800 rounded w-1/2"></div>
+                          </div>
+                        ))
+                      ) : (
+                        previousResumes.map((resume) => (
                         <div
                           key={resume.id || resume._id}
                           onClick={() => handleEditResume(resume)}
@@ -1913,7 +2349,7 @@ export default function AIResumeBuilder() {
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
                               <div
                                 onClick={(e) => { e.stopPropagation(); handleEditResume(resume); }}
-                                className="p-2 bg-white rounded-full text-zinc-900 hover:text-blue-600 hover:scale-110 transition-all shadow-lg"
+                                className="p-2 bg-white rounded-full text-zinc-900 hover:text-primary-600 hover:scale-110 transition-all shadow-lg"
                                 title="Edit"
                               >
                                 <PencilIcon className="w-5 h-5" />
@@ -1948,7 +2384,67 @@ export default function AIResumeBuilder() {
                         </div>
                       ))
                     )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Templates Tab Content */}
+                  {dashboardTab === 'sample-library' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                      {templates
+                        .filter((template) => {
+                          const matchesSearch = searchQuery === '' || 
+                            template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            template.description.toLowerCase().includes(searchQuery.toLowerCase());
+                          const matchesIndustry = selectedIndustry === 'all' || 
+                            template.category.toLowerCase() === selectedIndustry.toLowerCase();
+                          return matchesSearch && matchesIndustry;
+                        })
+                        .map((template) => (
+                          <div
+                            key={template.id}
+                            onClick={() => handleTemplateSelect(template.id)}
+                            className="group relative aspect-[3/4] bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden cursor-pointer hover:shadow-xl hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-300 hover:-translate-y-1"
+                          >
+                            {/* Template Preview */}
+                            <div className="relative w-full h-full bg-zinc-50 dark:bg-zinc-800 p-3 flex-1">
+                              {/* Company Logo Placeholder */}
+                              <div className="absolute top-3 left-3 w-10 h-10 bg-white dark:bg-zinc-900 rounded-md shadow-sm border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-700 dark:text-zinc-300 z-10">
+                                {template.company?.substring(0, 2).toUpperCase() || 'CO'}
+                              </div>
+                              
+                              {/* PRO Badge */}
+                              {template.isPro && (
+                                <div className="absolute bottom-3 right-3 bg-zinc-900 dark:bg-zinc-700 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">
+                                  PRO
+                                </div>
+                              )}
+
+                              {/* Mock Resume Preview */}
+                              <div className="w-full h-full bg-white dark:bg-zinc-900 rounded shadow-sm border border-zinc-100 dark:border-zinc-800 p-2.5 flex flex-col">
+                                <div className="w-2/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-3"></div>
+                                <div className="space-y-1.5 mb-3">
+                                  <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  <div className="w-4/5 h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                </div>
+                                <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">EDUCATION</div>
+                                <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
+                                <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">WORK EXPERIENCE</div>
+                                <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
+                                <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">PROJECTS</div>
+                                <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                              </div>
+                            </div>
+
+                            {/* Template Info */}
+                            <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-zinc-900 p-3 border-t border-zinc-100 dark:border-zinc-800">
+                              <h3 className="font-semibold text-sm text-zinc-900 dark:text-white mb-0.5">{template.name}</h3>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">{template.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1967,19 +2463,29 @@ export default function AIResumeBuilder() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 px-4">
-                    {templates.map((template) => (
+                    {templates.map((template) => {
+                      const isLocked = template.isPro && !canAccessProTemplate(template);
+                      return (
                       <div
                         key={template.id}
-                        onClick={() => handleTemplateSelect(template.id)}
+                        onClick={() => !isLocked && handleTemplateSelect(template.id)}
                         className={`group relative cursor-pointer rounded-2xl transition-all duration-300 bg-white dark:bg-zinc-900 overflow-hidden ${selectedTemplate === template.id
                           ? 'ring-4 ring-indigo-500/20 dark:ring-indigo-400/20 shadow-2xl scale-[1.02]'
                           : 'hover:shadow-xl hover:-translate-y-1 border border-zinc-100 dark:border-zinc-800'
-                          }`}
+                          } ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
                       >
                         {/* Selection Indicator */}
                         {selectedTemplate === template.id && (
                           <div className="absolute top-4 right-4 z-20 bg-indigo-600 dark:bg-indigo-500 text-white p-1.5 rounded-full shadow-lg">
                             <CheckCircleIcon className="w-6 h-6" />
+                          </div>
+                        )}
+                        {/* PRO Badge */}
+                        {template.isPro && (
+                          <div className="absolute top-4 left-4 z-20">
+                            <Badge className="bg-gradient-to-r from-primary-500 to-primary-600 text-white text-xs font-bold px-2 py-1">
+                              PRO
+                            </Badge>
                           </div>
                         )}
 
@@ -2035,6 +2541,17 @@ export default function AIResumeBuilder() {
                           </div>
                         </div>
 
+                        {/* Lock Overlay */}
+                        {isLocked && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 dark:bg-zinc-800/50 rounded-2xl z-30">
+                            <div className="text-center">
+                              <svg className="w-8 h-8 text-white mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                              <p className="text-white text-sm font-medium">Upgrade to PRO</p>
+                            </div>
+                          </div>
+                        )}
                         {/* Info Footer */}
                         <div className="p-6 border-t border-zinc-50 dark:border-zinc-800">
                           <div className="flex justify-between items-center mb-2">
@@ -2046,7 +2563,8 @@ export default function AIResumeBuilder() {
                           <p className="text-zinc-500 dark:text-zinc-400 text-sm">{template.description}</p>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 </div>
               </div>
@@ -2066,21 +2584,21 @@ export default function AIResumeBuilder() {
                     <div
                       onClick={() => handleMethodSelect('upload')}
                       className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${uploadMethod === 'upload'
-                        ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
-                        : 'border-zinc-200 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-xl bg-white dark:bg-zinc-900'
+                        ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-xl bg-white dark:bg-zinc-900'
                         }`}
                     >
                       <div className="p-10">
                         <div className="flex flex-col items-center text-center">
-                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${uploadMethod === 'upload' ? 'bg-blue-100 dark:bg-blue-900/30 scale-110' : 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:scale-105'
+                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${uploadMethod === 'upload' ? 'bg-primary-100 dark:bg-blue-900/30 scale-110' : 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-primary-50 dark:group-hover:bg-blue-900/20 group-hover:scale-105'
                             }`}>
-                            <CloudArrowUpIcon className={`h-14 w-14 ${uploadMethod === 'upload' ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                            <CloudArrowUpIcon className={`h-14 w-14 ${uploadMethod === 'upload' ? 'text-primary-600 dark:text-primary-400' : 'text-zinc-600 dark:text-zinc-400 group-hover:text-primary-600 dark:group-hover:text-primary-400'
                               }`} />
                           </div>
                           <h3 className="text-2xl font-bold text-zinc-950 dark:text-white mb-3">Upload Existing Resume</h3>
                           <p className="text-base text-zinc-600 dark:text-zinc-400 mb-6 leading-relaxed">We'll extract and enhance your information automatically using AI</p>
                           {uploadMethod === 'upload' && (
-                            <Badge color="blue" className="text-sm font-semibold px-4 py-1.5">
+                            <Badge className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-1.5">
                               <CheckCircleIcon className="h-4 w-4 mr-1" />
                               Selected
                             </Badge>
@@ -2093,18 +2611,18 @@ export default function AIResumeBuilder() {
                     <div
                       onClick={() => !isGenerating && handleMethodSelect('new')}
                       className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${uploadMethod === 'new'
-                        ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
-                        : 'border-zinc-200 dark:border-zinc-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-xl bg-white dark:bg-zinc-900'
+                        ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-xl bg-white dark:bg-zinc-900'
                         } ${isGenerating ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       <div className="p-10">
                         <div className="flex flex-col items-center text-center">
-                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${uploadMethod === 'new' ? 'bg-blue-100 dark:bg-blue-900/30 scale-110' : 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 group-hover:scale-105'
+                          <div className={`p-5 rounded-2xl mb-6 transition-all duration-300 ${uploadMethod === 'new' ? 'bg-primary-100 dark:bg-blue-900/30 scale-110' : 'bg-zinc-100 dark:bg-zinc-800 group-hover:bg-primary-50 dark:group-hover:bg-blue-900/20 group-hover:scale-105'
                             }`}>
                             {isGenerating ? (
-                              <ArrowPathIcon className="h-14 w-14 text-blue-600 dark:text-blue-400 animate-spin" />
+                              <ArrowPathIcon className="h-14 w-14 text-primary-600 dark:text-primary-400 animate-spin" />
                             ) : (
-                              <SparklesIcon className={`h-14 w-14 ${uploadMethod === 'new' ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                              <SparklesIcon className={`h-14 w-14 ${uploadMethod === 'new' ? 'text-primary-600 dark:text-primary-400' : 'text-zinc-600 dark:text-zinc-400 group-hover:text-primary-600 dark:group-hover:text-primary-400'
                                 }`} />
                             )}
                           </div>
@@ -2118,7 +2636,7 @@ export default function AIResumeBuilder() {
                             }
                           </p>
                           {uploadMethod === 'new' && !isGenerating && (
-                            <Badge color="blue" className="text-sm font-semibold px-4 py-1.5">
+                            <Badge className="bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold px-4 py-1.5">
                               <CheckCircleIcon className="h-4 w-4 mr-1" />
                               Selected
                             </Badge>
@@ -2145,13 +2663,13 @@ export default function AIResumeBuilder() {
                               type="file"
                               accept=".pdf,.doc,.docx"
                               onChange={(e) => setResumeFile(e.target.files?.[0] || null)}
-                              className="block w-full text-sm text-zinc-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 file:cursor-pointer cursor-pointer"
+                              className="block w-full text-sm text-zinc-600 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 file:cursor-pointer cursor-pointer"
                             />
                           </div>
                           {resumeFile && (
-                            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="mt-3 p-3 bg-primary-50 rounded-lg border border-primary-200">
                               <div className="flex items-center gap-2">
-                                <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                                <DocumentTextIcon className="h-5 w-5 text-primary-600" />
                                 <span className="text-sm font-medium text-zinc-950">{resumeFile.name}</span>
                                 <span className="text-xs text-zinc-500">
                                   ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB)
@@ -2178,9 +2696,8 @@ export default function AIResumeBuilder() {
                               handleFileUpload();
                             }
                           }}
-                          color="blue"
+                          className="bg-primary-500 hover:bg-primary-600 text-white flex-1"
                           disabled={!resumeFile || uploading}
-                          className="flex-1"
                         >
                           {uploading ? (
                             <>
@@ -2208,9 +2725,9 @@ export default function AIResumeBuilder() {
                         </p>
                       </div>
 
-                      <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mb-6">
+                      <div className="bg-primary-50 rounded-lg border border-primary-200 p-4 mb-6">
                         <div className="flex items-start gap-3">
-                          <SparklesIcon className="h-5 w-5 text-blue-600 mt-0.5" />
+                          <SparklesIcon className="h-5 w-5 text-primary-600 mt-0.5" />
                           <div>
                             <p className="text-sm font-medium text-zinc-950 mb-1">What we'll import:</p>
                             <ul className="text-sm text-zinc-600 space-y-1 list-disc list-inside">
@@ -2239,9 +2756,8 @@ export default function AIResumeBuilder() {
                               handleCreateNew();
                             }
                           }}
-                          color="blue"
+                          className="bg-primary-500 hover:bg-primary-600 text-white flex-1"
                           disabled={isGenerating}
-                          className="flex-1"
                         >
                           {isGenerating ? (
                             <>
@@ -2263,7 +2779,7 @@ export default function AIResumeBuilder() {
                   {uploadMethod === 'new' && isGenerating && (
                     <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 p-8 shadow-sm">
                       <div className="text-center py-8">
-                        <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 dark:text-blue-400 animate-spin" />
+                        <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 dark:text-primary-400 animate-spin" />
                         <h3 className="text-lg font-semibold text-zinc-950 dark:text-white mb-2">Creating Your Resume...</h3>
                         <p className="text-sm text-zinc-500 dark:text-zinc-400">Please wait while we set up your resume</p>
                       </div>
@@ -2278,55 +2794,117 @@ export default function AIResumeBuilder() {
               <div className="w-full h-[calc(100vh-120px)] flex flex-col">
                 {/* Top Tabs Navigation - Smooth FlowCV Style */}
                 <div className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center gap-0.5 px-6">
+                  <div className="flex items-center justify-between px-6">
+                    <div className="flex items-center gap-0.5">
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.OVERVIEW)}
                       className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.OVERVIEW
-                        ? 'text-blue-600 dark:text-blue-400'
+                        ? 'text-primary-600 dark:text-primary-400'
                         : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
                         }`}
                     >
                       Overview
                       {activeTab === EDITOR_TABS.OVERVIEW && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 dark:bg-primary-400 rounded-t-full animate-in slide-in-from-left duration-200" />
                       )}
                     </button>
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.CONTENT)}
                       className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.CONTENT
-                        ? 'text-blue-600 dark:text-blue-400'
+                        ? 'text-primary-600 dark:text-primary-400'
                         : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
                         }`}
                     >
                       Content
                       {activeTab === EDITOR_TABS.CONTENT && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 dark:bg-primary-400 rounded-t-full animate-in slide-in-from-left duration-200" />
                       )}
                     </button>
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.CUSTOMIZE)}
                       className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.CUSTOMIZE
-                        ? 'text-blue-600 dark:text-blue-400'
+                        ? 'text-primary-600 dark:text-primary-400'
                         : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
                         }`}
                     >
                       Customize
                       {activeTab === EDITOR_TABS.CUSTOMIZE && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 dark:bg-primary-400 rounded-t-full animate-in slide-in-from-left duration-200" />
                       )}
                     </button>
                     <button
                       onClick={() => setActiveTab(EDITOR_TABS.LINKS)}
                       className={`relative px-5 py-3.5 text-sm font-medium transition-all duration-200 ${activeTab === EDITOR_TABS.LINKS
-                        ? 'text-blue-600 dark:text-blue-400'
+                        ? 'text-primary-600 dark:text-primary-400'
                         : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200'
                         }`}
                     >
                       Links
                       {activeTab === EDITOR_TABS.LINKS && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-t-full animate-in slide-in-from-left duration-200" />
+                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-500 dark:bg-primary-400 rounded-t-full animate-in slide-in-from-left duration-200" />
                       )}
                     </button>
+                    </div>
+                    <div className="ml-4 flex items-center gap-3">
+                      {/* Completeness Indicator */}
+                      <div className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                        <span>Completeness:</span>
+                        <div className="flex items-center gap-1">
+                          {Object.values(resumeCompleteness).map((complete, idx) => (
+                            <div
+                              key={idx}
+                              className={`w-2 h-2 rounded-full ${
+                                complete
+                                  ? 'bg-green-500'
+                                  : 'bg-zinc-300 dark:bg-zinc-600'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="font-medium">
+                          {Object.values(resumeCompleteness).filter(Boolean).length}/
+                          {Object.keys(resumeCompleteness).length}
+                        </span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!checkResumeCompleteness()) {
+                            toast.error('Please complete all required sections (Personal Info, Experience, Education) before continuing');
+                            return;
+                          }
+                          // Save resume before completing
+                          if (currentResume) {
+                            const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+                            const resumeId = currentResume._id || currentResume.id;
+                            try {
+                              await fetch(`${API_URL}/api/resume-builder/${resumeId}`, {
+                                method: 'PATCH',
+                                headers: {
+                                  'Authorization': `Bearer ${token}`,
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  ...resumeData,
+                                  templateSettings,
+                                }),
+                              });
+                            } catch (error) {
+                              console.error('Error saving resume:', error);
+                            }
+                          }
+                          navigateToStep(WIZARD_STEPS.EXPERT_REVIEW);
+                        }}
+                        disabled={!checkResumeCompleteness()}
+                        className={`px-5 py-2.5 text-sm font-semibold rounded-lg transition-all shadow-sm hover:shadow-md flex items-center gap-2 ${
+                          checkResumeCompleteness()
+                            ? 'bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white cursor-pointer'
+                            : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-400 dark:text-zinc-500 cursor-not-allowed'
+                        }`}
+                      >
+                        <CheckCircleIcon className="h-4 w-4" />
+                        Complete Resume
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2344,8 +2922,8 @@ export default function AIResumeBuilder() {
                             onClick={() => setExpandedSections(prev => ({ ...prev, personal: !prev.personal }))}
                           >
                             <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                                <UserIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                              <div className="p-2 rounded-lg bg-primary-50 dark:bg-blue-900/20">
+                                <UserIcon className="h-4 w-4 text-primary-600 dark:text-primary-400" />
                               </div>
                               <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Personal Information</h3>
                             </div>
@@ -2380,84 +2958,80 @@ export default function AIResumeBuilder() {
                           </div>
 
                           {expandedSections.personal && (
-                            <div className="space-y-4 pt-2">
+                            <div className="px-4 pb-4">
                               {editingSection === 'personal' ? (
-                                <div className="space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
-                                  <FieldGroup className="space-y-5">
+                                <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-200 pt-4">
+                                  <FieldGroup className="space-y-6">
                                     <Field>
-                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
-                                        Full Name
+                                      <Label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-2.5 block">
+                                        FULL NAME
                                       </Label>
                                       <Input
                                         value={resumeData.fullName}
                                         onChange={(e) => setResumeData(prev => ({ ...prev, fullName: e.target.value }))}
                                         placeholder="Enter your full name"
-                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        className="h-11 px-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 transition-all duration-200 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 hover:border-zinc-300 dark:hover:border-zinc-600"
                                       />
                                     </Field>
                                     <Field>
-                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
-                                        Job Title
+                                      <Label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-2.5 block">
+                                        JOB TITLE
                                       </Label>
                                       <Input
                                         value={resumeData.jobTitle || ''}
                                         onChange={(e) => setResumeData(prev => ({ ...prev, jobTitle: e.target.value }))}
                                         placeholder="e.g. Software Engineer"
-                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        className="h-11 px-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 transition-all duration-200 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 hover:border-zinc-300 dark:hover:border-zinc-600"
                                       />
                                     </Field>
                                     <Field>
-                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
-                                        Email
+                                      <Label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-2.5 block">
+                                        EMAIL
                                       </Label>
                                       <Input
                                         type="email"
                                         value={resumeData.email}
                                         onChange={(e) => setResumeData(prev => ({ ...prev, email: e.target.value }))}
                                         placeholder="your.email@example.com"
-                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        className="h-11 px-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 transition-all duration-200 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 hover:border-zinc-300 dark:hover:border-zinc-600"
                                       />
                                     </Field>
                                     <Field>
-                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
-                                        Phone
+                                      <Label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-2.5 block">
+                                        PHONE
                                       </Label>
                                       <Input
                                         value={resumeData.phone}
                                         onChange={(e) => setResumeData(prev => ({ ...prev, phone: e.target.value }))}
                                         placeholder="+1 (555) 123-4567"
-                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        className="h-11 px-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 transition-all duration-200 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 hover:border-zinc-300 dark:hover:border-zinc-600"
                                       />
                                     </Field>
                                     <Field>
-                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
-                                        Location
+                                      <Label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider mb-2.5 block">
+                                        LOCATION
                                       </Label>
                                       <Input
                                         value={resumeData.location}
                                         onChange={(e) => setResumeData(prev => ({ ...prev, location: e.target.value }))}
                                         placeholder="City, State or Country"
-                                        className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        className="h-11 px-4 border-2 border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-500 transition-all duration-200 focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 hover:border-zinc-300 dark:hover:border-zinc-600"
                                       />
                                     </Field>
                                   </FieldGroup>
-                                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                                    <Button
+                                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                                    <button
                                       onClick={() => setEditingSection(null)}
-                                      plain
-                                      size="sm"
-                                      className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                      className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
                                     >
                                       Cancel
-                                    </Button>
-                                    <Button
+                                    </button>
+                                    <button
                                       onClick={() => setEditingSection(null)}
-                                      color="blue"
-                                      size="sm"
-                                      className="transition-all duration-200 hover:scale-105"
+                                      className="px-5 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold rounded-lg transition-all duration-200 hover:scale-105 shadow-sm hover:shadow-md"
                                     >
                                       Save Changes
-                                    </Button>
+                                    </button>
                                   </div>
                                 </div>
                               ) : (
@@ -2560,23 +3134,19 @@ export default function AIResumeBuilder() {
                                       onChange={(value) => setResumeData(prev => ({ ...prev, summary: value }))}
                                       placeholder="Write your professional summary..."
                                     />
-                                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                                      <Button
+                                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                                      <button
                                         onClick={() => setEditingSection(null)}
-                                        plain
-                                        size="sm"
-                                        className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                                        className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
                                       >
                                         Cancel
-                                      </Button>
-                                      <Button
+                                      </button>
+                                      <button
                                         onClick={() => setEditingSection(null)}
-                                        color="blue"
-                                        size="sm"
-                                        className="transition-all duration-200 hover:scale-105"
+                                        className="px-5 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-semibold rounded-lg transition-all duration-200 hover:scale-105 shadow-sm hover:shadow-md"
                                       >
                                         Save Changes
-                                      </Button>
+                                      </button>
                                     </div>
                                   </div>
                                 ) : (
@@ -2641,7 +3211,7 @@ export default function AIResumeBuilder() {
                                         size="sm"
                                         className="text-xs flex items-center gap-1"
                                       >
-                                        <SparklesIcon className="h-3 w-3 text-blue-600" />
+                                        <SparklesIcon className="h-3 w-3 text-primary-600" />
                                         {isGenerating ? 'Generating...' : 'Generate with AI'}
                                       </Button>
                                       {resumeData.profileSummary && (
@@ -2658,7 +3228,7 @@ export default function AIResumeBuilder() {
                                           size="sm"
                                           className="text-xs flex items-center gap-1"
                                         >
-                                          <ArrowPathIcon className="h-3 w-3 text-blue-600" />
+                                          <ArrowPathIcon className="h-3 w-3 text-primary-600" />
                                           {isGenerating ? 'Rewriting...' : 'Rewrite with AI'}
                                         </Button>
                                       )}
@@ -2694,7 +3264,7 @@ export default function AIResumeBuilder() {
                                               size="sm"
                                               className="text-xs flex items-center gap-1"
                                             >
-                                              <SparklesIcon className="h-3 w-3 text-blue-600" />
+                                              <SparklesIcon className="h-3 w-3 text-primary-600" />
                                               {isGenerating ? 'Generating...' : 'Generate with AI'}
                                             </Button>
                                           ) : (
@@ -2705,7 +3275,7 @@ export default function AIResumeBuilder() {
                                               size="sm"
                                               className="text-xs flex items-center gap-1"
                                             >
-                                              <ArrowPathIcon className="h-3 w-3 text-blue-600" />
+                                              <ArrowPathIcon className="h-3 w-3 text-primary-600" />
                                               {isGenerating ? 'Rewriting...' : 'Rewrite with AI'}
                                             </Button>
                                           )}
@@ -2986,7 +3556,7 @@ export default function AIResumeBuilder() {
                                             value={currentExperience.title}
                                             onChange={(e) => setCurrentExperience(prev => ({ ...prev, title: e.target.value }))}
                                             placeholder="e.g. Software Engineer"
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                         <Field>
@@ -2997,7 +3567,7 @@ export default function AIResumeBuilder() {
                                             value={currentExperience.company}
                                             onChange={(e) => setCurrentExperience(prev => ({ ...prev, company: e.target.value }))}
                                             placeholder="Company Name"
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                       </div>
@@ -3009,7 +3579,7 @@ export default function AIResumeBuilder() {
                                           value={currentExperience.location}
                                           onChange={(e) => setCurrentExperience(prev => ({ ...prev, location: e.target.value }))}
                                           placeholder="City, State or Remote"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <div className="grid grid-cols-2 gap-4">
@@ -3021,7 +3591,7 @@ export default function AIResumeBuilder() {
                                             type="month"
                                             value={currentExperience.startDate}
                                             onChange={(e) => setCurrentExperience(prev => ({ ...prev, startDate: e.target.value }))}
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                         <Field>
@@ -3034,7 +3604,7 @@ export default function AIResumeBuilder() {
                                             onChange={(e) => setCurrentExperience(prev => ({ ...prev, endDate: e.target.value }))}
                                             disabled={currentExperience.current}
                                             placeholder="Leave empty if current"
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                       </div>
@@ -3057,7 +3627,7 @@ export default function AIResumeBuilder() {
                                             disabled={isGenerating || !currentExperience.title || !currentExperience.company}
                                             plain
                                             size="sm"
-                                            className="text-xs flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                                            className="text-xs flex items-center gap-1.5 text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-blue-300 transition-colors"
                                           >
                                             <SparklesIcon className="h-3.5 w-3.5" />
                                             {isGenerating ? 'Generating...' : 'Generate with AI'}
@@ -3115,9 +3685,8 @@ export default function AIResumeBuilder() {
                                             setEditingSection(null);
                                           }
                                         }}
-                                        color="blue"
+                                        className="bg-primary-500 hover:bg-primary-600 text-white transition-all duration-200 hover:scale-105"
                                         size="sm"
-                                        className="transition-all duration-200 hover:scale-105"
                                       >
                                         {editingIndex !== null ? 'Update Experience' : 'Add Experience'}
                                       </Button>
@@ -3260,7 +3829,7 @@ export default function AIResumeBuilder() {
                                           value={currentEducation.degree}
                                           onChange={(e) => setCurrentEducation(prev => ({ ...prev, degree: e.target.value }))}
                                           placeholder="e.g. Bachelor of Science in Computer Science"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3271,7 +3840,7 @@ export default function AIResumeBuilder() {
                                           value={currentEducation.institution}
                                           onChange={(e) => setCurrentEducation(prev => ({ ...prev, institution: e.target.value }))}
                                           placeholder="University Name"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3282,7 +3851,7 @@ export default function AIResumeBuilder() {
                                           value={currentEducation.location}
                                           onChange={(e) => setCurrentEducation(prev => ({ ...prev, location: e.target.value }))}
                                           placeholder="City, State"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <div className="grid grid-cols-2 gap-4">
@@ -3294,7 +3863,7 @@ export default function AIResumeBuilder() {
                                             type="month"
                                             value={currentEducation.startDate}
                                             onChange={(e) => setCurrentEducation(prev => ({ ...prev, startDate: e.target.value }))}
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                         <Field>
@@ -3306,7 +3875,7 @@ export default function AIResumeBuilder() {
                                             value={currentEducation.endDate}
                                             onChange={(e) => setCurrentEducation(prev => ({ ...prev, endDate: e.target.value }))}
                                             placeholder="Leave empty if ongoing"
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                       </div>
@@ -3318,7 +3887,7 @@ export default function AIResumeBuilder() {
                                           value={currentEducation.gpa}
                                           onChange={(e) => setCurrentEducation(prev => ({ ...prev, gpa: e.target.value }))}
                                           placeholder="e.g. 3.8/4.0"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3377,9 +3946,8 @@ export default function AIResumeBuilder() {
                                             setEditingSection(null);
                                           }
                                         }}
-                                        color="blue"
+                                        className="bg-primary-500 hover:bg-primary-600 text-white transition-all duration-200 hover:scale-105"
                                         size="sm"
-                                        className="transition-all duration-200 hover:scale-105"
                                       >
                                         {editingIndex !== null ? 'Update Education' : 'Add Education'}
                                       </Button>
@@ -3519,7 +4087,7 @@ export default function AIResumeBuilder() {
                                           value={currentCertification.name}
                                           onChange={(e) => setCurrentCertification(prev => ({ ...prev, name: e.target.value }))}
                                           placeholder="e.g. AWS Certified Solutions Architect"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3530,7 +4098,7 @@ export default function AIResumeBuilder() {
                                           value={currentCertification.issuer}
                                           onChange={(e) => setCurrentCertification(prev => ({ ...prev, issuer: e.target.value }))}
                                           placeholder="e.g. Amazon Web Services"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <div className="grid grid-cols-2 gap-4">
@@ -3542,7 +4110,7 @@ export default function AIResumeBuilder() {
                                             type="month"
                                             value={currentCertification.date}
                                             onChange={(e) => setCurrentCertification(prev => ({ ...prev, date: e.target.value }))}
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                         <Field>
@@ -3553,7 +4121,7 @@ export default function AIResumeBuilder() {
                                             type="month"
                                             value={currentCertification.expiryDate}
                                             onChange={(e) => setCurrentCertification(prev => ({ ...prev, expiryDate: e.target.value }))}
-                                            className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                            className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                           />
                                         </Field>
                                       </div>
@@ -3565,7 +4133,7 @@ export default function AIResumeBuilder() {
                                           value={currentCertification.credentialId}
                                           onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialId: e.target.value }))}
                                           placeholder="e.g. ABC123456"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3577,7 +4145,7 @@ export default function AIResumeBuilder() {
                                           value={currentCertification.credentialUrl}
                                           onChange={(e) => setCurrentCertification(prev => ({ ...prev, credentialUrl: e.target.value }))}
                                           placeholder="https://..."
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                     </FieldGroup>
@@ -3624,9 +4192,8 @@ export default function AIResumeBuilder() {
                                             setEditingSection(null);
                                           }
                                         }}
-                                        color="blue"
+                                        className="bg-primary-500 hover:bg-primary-600 text-white transition-all duration-200 hover:scale-105"
                                         size="sm"
-                                        className="transition-all duration-200 hover:scale-105"
                                       >
                                         {editingIndex !== null ? 'Update Certification' : 'Add Certification'}
                                       </Button>
@@ -3771,7 +4338,7 @@ export default function AIResumeBuilder() {
                                           value={currentReference.name}
                                           onChange={(e) => setCurrentReference(prev => ({ ...prev, name: e.target.value }))}
                                           placeholder="e.g. John Doe"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3782,7 +4349,7 @@ export default function AIResumeBuilder() {
                                           value={currentReference.title}
                                           onChange={(e) => setCurrentReference(prev => ({ ...prev, title: e.target.value }))}
                                           placeholder="e.g. Senior Manager"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3793,7 +4360,7 @@ export default function AIResumeBuilder() {
                                           value={currentReference.company}
                                           onChange={(e) => setCurrentReference(prev => ({ ...prev, company: e.target.value }))}
                                           placeholder="e.g. Acme Corp"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3805,7 +4372,7 @@ export default function AIResumeBuilder() {
                                           value={currentReference.email}
                                           onChange={(e) => setCurrentReference(prev => ({ ...prev, email: e.target.value }))}
                                           placeholder="john@example.com"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3816,7 +4383,7 @@ export default function AIResumeBuilder() {
                                           value={currentReference.phone}
                                           onChange={(e) => setCurrentReference(prev => ({ ...prev, phone: e.target.value }))}
                                           placeholder="+1 (555) 123-4567"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -3827,7 +4394,7 @@ export default function AIResumeBuilder() {
                                           value={currentReference.relationship}
                                           onChange={(e) => setCurrentReference(prev => ({ ...prev, relationship: e.target.value }))}
                                           placeholder="e.g. Former Manager"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                     </FieldGroup>
@@ -3874,9 +4441,8 @@ export default function AIResumeBuilder() {
                                             setEditingSection(null);
                                           }
                                         }}
-                                        color="blue"
+                                        className="bg-primary-500 hover:bg-primary-600 text-white transition-all duration-200 hover:scale-105"
                                         size="sm"
-                                        className="transition-all duration-200 hover:scale-105"
                                       >
                                         {editingIndex !== null ? 'Update Reference' : 'Add Reference'}
                                       </Button>
@@ -4005,7 +4571,7 @@ export default function AIResumeBuilder() {
                                           value={currentLanguage.language}
                                           onChange={(e) => setCurrentLanguage(prev => ({ ...prev, language: e.target.value }))}
                                           placeholder="e.g. English"
-                                          className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                          className="transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                                         />
                                       </Field>
                                       <Field>
@@ -4053,9 +4619,8 @@ export default function AIResumeBuilder() {
                                             setEditingSection(null);
                                           }
                                         }}
-                                        color="blue"
+                                        className="bg-primary-500 hover:bg-primary-600 text-white transition-all duration-200 hover:scale-105"
                                         size="sm"
-                                        className="transition-all duration-200 hover:scale-105"
                                       >
                                         {editingIndex !== null ? 'Update Language' : 'Add Language'}
                                       </Button>
@@ -5940,6 +6505,59 @@ export default function AIResumeBuilder() {
                     {/* Customize Tab */}
                     {activeTab === EDITOR_TABS.CUSTOMIZE && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {/* Template Selection */}
+                        <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5">
+                          <h3 className="text-sm font-semibold text-zinc-950 dark:text-white mb-5 flex items-center gap-2">
+                            <DocumentTextIcon className="h-4 w-4 text-primary-600" />
+                            Resume Template
+                          </h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {templates.map((template) => {
+                              const isSelected = selectedTemplate === template.id;
+                              const isLocked = template.isPro && !canAccessProTemplate(template);
+                              return (
+                                <button
+                                  key={template.id}
+                                  onClick={() => handleTemplateSwitch(template.id)}
+                                  className={`relative group p-3 rounded-xl border-2 transition-all duration-200 ${
+                                    isSelected
+                                      ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/20'
+                                      : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900'
+                                  } ${isLocked ? 'opacity-60 cursor-not-allowed' : 'hover:shadow-md'}`}
+                                >
+                                  {template.isPro && (
+                                    <div className="absolute top-2 right-2">
+                                      <Badge className="bg-gradient-to-r from-primary-500 to-primary-600 text-white text-[10px] font-bold px-2 py-0.5">
+                                        PRO
+                                      </Badge>
+                                    </div>
+                                  )}
+                                  {isLocked && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 dark:bg-zinc-800/50 rounded-xl">
+                                      <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  <div className="text-left">
+                                    <div className="font-semibold text-sm text-zinc-950 dark:text-white mb-1">
+                                      {template.name}
+                                    </div>
+                                    <div className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2">
+                                      {template.description}
+                                    </div>
+                                  </div>
+                                  {isSelected && (
+                                    <div className="absolute bottom-2 right-2">
+                                      <CheckCircleIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
                         <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5">
                           <h3 className="text-sm font-semibold text-zinc-950 dark:text-white mb-5 flex items-center gap-2">
                             <SwatchIcon className="h-4 w-4 text-purple-600" />
@@ -5970,7 +6588,7 @@ export default function AIResumeBuilder() {
                                     <div className={`w-8 h-8 rounded-full ${scheme.color} shadow-sm group-hover:scale-110 transition-transform duration-200`} />
                                     <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400 uppercase tracking-wide">{scheme.label}</span>
                                     {templateSettings.colorScheme === scheme.value && (
-                                      <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-current text-blue-600" />
+                                      <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-current text-primary-600" />
                                     )}
                                   </button>
                                 ))}
@@ -6046,6 +6664,96 @@ export default function AIResumeBuilder() {
                       </div>
                     )}
 
+                    {/* Upgrade Modal for PRO Templates */}
+                    <Transition show={showUpgradeModal}>
+                      <Dialog as="div" className="relative z-50" onClose={() => setShowUpgradeModal(false)}>
+                        <Transition.Child
+                          as={Fragment}
+                          enter="ease-out duration-300"
+                          enterFrom="opacity-0"
+                          enterTo="opacity-100"
+                          leave="ease-in duration-200"
+                          leaveFrom="opacity-100"
+                          leaveTo="opacity-0"
+                        >
+                          <div className="fixed inset-0 bg-zinc-900/75 backdrop-blur-sm" />
+                        </Transition.Child>
+
+                        <div className="fixed inset-0 overflow-y-auto">
+                          <div className="flex min-h-full items-center justify-center p-4">
+                            <Transition.Child
+                              as={Fragment}
+                              enter="ease-out duration-300"
+                              enterFrom="opacity-0 scale-95"
+                              enterTo="opacity-100 scale-100"
+                              leave="ease-in duration-200"
+                              leaveFrom="opacity-100 scale-100"
+                              leaveTo="opacity-0 scale-95"
+                            >
+                              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white dark:bg-zinc-900 p-6 text-left align-middle shadow-xl transition-all">
+                                <div className="flex items-center justify-between mb-4">
+                                  <Dialog.Title as="h3" className="text-xl font-bold text-zinc-950 dark:text-white">
+                                    Upgrade to PRO
+                                  </Dialog.Title>
+                                  <button
+                                    onClick={() => setShowUpgradeModal(false)}
+                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                                  >
+                                    <XMarkIcon className="h-5 w-5" />
+                                  </button>
+                                </div>
+
+                                <div className="mb-6">
+                                  <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+                                    The <span className="font-semibold text-primary-600">{selectedProTemplate?.name}</span> template is available exclusively for PRO members.
+                                  </p>
+                                  <div className="bg-gradient-to-r from-primary-50 to-accent-50 dark:from-primary-900/20 dark:to-accent-900/20 rounded-xl p-4 border border-primary-200 dark:border-primary-800">
+                                    <h4 className="font-semibold text-zinc-950 dark:text-white mb-2">PRO Plan Benefits:</h4>
+                                    <ul className="space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
+                                      <li className="flex items-center gap-2">
+                                        <CheckCircleIcon className="h-4 w-4 text-primary-600 flex-shrink-0" />
+                                        Access to all premium templates
+                                      </li>
+                                      <li className="flex items-center gap-2">
+                                        <CheckCircleIcon className="h-4 w-4 text-primary-600 flex-shrink-0" />
+                                        Unlimited resume downloads
+                                      </li>
+                                      <li className="flex items-center gap-2">
+                                        <CheckCircleIcon className="h-4 w-4 text-primary-600 flex-shrink-0" />
+                                        Advanced customization options
+                                      </li>
+                                      <li className="flex items-center gap-2">
+                                        <CheckCircleIcon className="h-4 w-4 text-primary-600 flex-shrink-0" />
+                                        Priority support
+                                      </li>
+                                    </ul>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => setShowUpgradeModal(false)}
+                                    className="flex-1 px-4 py-2.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                                  >
+                                    Maybe Later
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setShowUpgradeModal(false);
+                                      router.push('/candidate/billing');
+                                    }}
+                                    className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 rounded-lg transition-all shadow-sm hover:shadow-md"
+                                  >
+                                    Upgrade Now
+                                  </button>
+                                </div>
+                              </Dialog.Panel>
+                            </Transition.Child>
+                          </div>
+                        </div>
+                      </Dialog>
+                    </Transition>
+
                     {/* Overview and Links tabs */}
                     {activeTab === EDITOR_TABS.OVERVIEW && (
                       <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-300 dark:border-zinc-700 shadow-sm p-4">
@@ -6059,7 +6767,7 @@ export default function AIResumeBuilder() {
                       <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
                         <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm p-5">
                           <h3 className="text-sm font-semibold text-zinc-950 dark:text-white mb-5 flex items-center gap-2">
-                            <LinkIcon className="h-4 w-4 text-blue-600" />
+                            <LinkIcon className="h-4 w-4 text-primary-600" />
                             Web & Social Links
                           </h3>
                           <FieldGroup className="space-y-5">
@@ -6190,7 +6898,7 @@ export default function AIResumeBuilder() {
                       {pdfGenerating ? (
                         <div className="absolute inset-0 flex items-center justify-center">
                           <div className="text-center">
-                            <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 dark:text-blue-400 animate-spin" />
+                            <ArrowPathIcon className="h-12 w-12 mx-auto mb-4 text-blue-500 dark:text-primary-400 animate-spin" />
                             <p className="text-sm text-zinc-600 dark:text-zinc-400">Generating PDF preview...</p>
                             <p className="text-xs text-zinc-500 dark:text-zinc-500 mt-2">This may take a few seconds</p>
                           </div>
@@ -6215,6 +6923,979 @@ export default function AIResumeBuilder() {
                       )}
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Expert Review Step */}
+            {currentStep === WIZARD_STEPS.EXPERT_REVIEW && (
+              <div className="w-full px-6 py-8 bg-white dark:bg-zinc-900 min-h-[80vh]">
+                <div className="max-w-4xl mx-auto">
+                  <div className="text-center mb-8">
+                    <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">
+                      Get Expert Review
+                    </h1>
+                    <p className="text-zinc-600 dark:text-zinc-400">
+                      Have a professional review your resume and get personalized feedback
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    {/* Basic Review Package */}
+                    <div
+                      onClick={() => setSelectedReviewPackage('basic')}
+                      className={`relative p-6 rounded-xl border-2 transition-all cursor-pointer ${
+                        selectedReviewPackage === 'basic'
+                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/20 shadow-lg'
+                          : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-zinc-950 dark:text-white">Basic Review</h3>
+                        {selectedReviewPackage === 'basic' && (
+                          <CheckCircleIcon className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+                        )}
+                      </div>
+                      <div className="mb-4">
+                        <span className="text-3xl font-bold text-zinc-950 dark:text-white">$29</span>
+                        <span className="text-zinc-500 dark:text-zinc-400 text-sm ml-1">one-time</span>
+                      </div>
+                      <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400 mb-6">
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Grammar & spelling check</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Formatting review</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Basic feedback</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>24-48 hour turnaround</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* Professional Review Package */}
+                    <div
+                      onClick={() => setSelectedReviewPackage('professional')}
+                      className={`relative p-6 rounded-xl border-2 transition-all cursor-pointer ${
+                        selectedReviewPackage === 'professional'
+                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/20 shadow-lg'
+                          : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900'
+                      }`}
+                    >
+                      <div className="absolute top-4 right-4">
+                        <Badge className="bg-gradient-to-r from-primary-500 to-primary-600 text-white text-xs font-bold px-2 py-1">
+                          POPULAR
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-zinc-950 dark:text-white">Professional Review</h3>
+                        {selectedReviewPackage === 'professional' && (
+                          <CheckCircleIcon className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+                        )}
+                      </div>
+                      <div className="mb-4">
+                        <span className="text-3xl font-bold text-zinc-950 dark:text-white">$79</span>
+                        <span className="text-zinc-500 dark:text-zinc-400 text-sm ml-1">one-time</span>
+                      </div>
+                      <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400 mb-6">
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Everything in Basic</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Industry-specific feedback</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>ATS optimization tips</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Content enhancement suggestions</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>12-24 hour turnaround</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    {/* Executive Review Package */}
+                    <div
+                      onClick={() => setSelectedReviewPackage('executive')}
+                      className={`relative p-6 rounded-xl border-2 transition-all cursor-pointer ${
+                        selectedReviewPackage === 'executive'
+                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/20 shadow-lg'
+                          : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-zinc-950 dark:text-white">Executive Review</h3>
+                        {selectedReviewPackage === 'executive' && (
+                          <CheckCircleIcon className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+                        )}
+                      </div>
+                      <div className="mb-4">
+                        <span className="text-3xl font-bold text-zinc-950 dark:text-white">$149</span>
+                        <span className="text-zinc-500 dark:text-zinc-400 text-sm ml-1">one-time</span>
+                      </div>
+                      <ul className="space-y-2 text-sm text-zinc-600 dark:text-zinc-400 mb-6">
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Everything in Professional</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>1-on-1 consultation call</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>Personalized rewrite suggestions</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>LinkedIn profile review</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <CheckCircleIcon className="h-4 w-4 text-primary-600 dark:text-primary-400 mt-0.5 flex-shrink-0" />
+                          <span>6-12 hour turnaround</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-4">
+                    <button
+                      onClick={() => navigateToStep(WIZARD_STEPS.TARGET_POSITIONS)}
+                      className="px-6 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                    >
+                      Skip for Now
+                    </button>
+                    {selectedReviewPackage && (
+                      <button
+                        onClick={async () => {
+                          // Handle payment/checkout for selected package
+                          toast.info(`Redirecting to checkout for ${selectedReviewPackage} review...`);
+                          // TODO: Integrate with payment system
+                          // For now, proceed to target positions
+                          navigateToStep(WIZARD_STEPS.TARGET_POSITIONS);
+                        }}
+                        className="px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 rounded-lg transition-all shadow-sm hover:shadow-md"
+                      >
+                        Continue with Review
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Target Positions Step */}
+            {currentStep === WIZARD_STEPS.TARGET_POSITIONS && (
+              <div className="w-full px-4 sm:px-6 py-12 bg-white dark:bg-zinc-950 min-h-screen">
+                <div className="max-w-3xl mx-auto">
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="text-center mb-12"
+                  >
+                    <h1 className="text-5xl font-extrabold text-zinc-900 dark:text-white mb-4 tracking-tight">
+                      Target Position Details
+                    </h1>
+                    <p className="text-xl text-zinc-600 dark:text-zinc-400 font-light">
+                      Help us match you with the right opportunities
+                    </p>
+                  </motion.div>
+
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.1 }}
+                    className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl p-10 space-y-10"
+                  >
+                    <FieldGroup className="space-y-8">
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.2 }}
+                      >
+                        <Field>
+                          <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-3 block">
+                            Target Position / Job Title
+                          </Label>
+                          <input
+                            type="text"
+                            value={targetPositions.position}
+                            onChange={(e) => setTargetPositions(prev => ({ ...prev, position: e.target.value }))}
+                            placeholder="e.g. Software Engineer, Product Manager"
+                            className="w-full h-14 px-5 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-500 dark:placeholder:text-zinc-400 text-base transition-all duration-200 focus:border-primary-500 dark:focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 hover:border-zinc-400 dark:hover:border-zinc-600 focus:outline-none"
+                          />
+                        </Field>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.3 }}
+                      >
+                        <Field>
+                          <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-3 block">
+                            Preferred Country
+                          </Label>
+                          <div className="relative">
+                            <div className="relative">
+                              <MapPinIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400 dark:text-zinc-500 pointer-events-none z-10" />
+                              <input
+                                type="text"
+                                value={countryQuery}
+                                onChange={(e) => {
+                                  const value = e.target.value;
+                                  setCountryQuery(value);
+                                  setShowCountryDropdown(value.length > 0);
+                                }}
+                                onFocus={() => {
+                                  if (countryQuery || !targetPositions.country) {
+                                    setShowCountryDropdown(true);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  setTimeout(() => setShowCountryDropdown(false), 200);
+                                }}
+                                placeholder="Search for a country..."
+                                className="w-full h-14 pl-14 pr-14 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-500 dark:placeholder:text-zinc-400 text-base transition-all duration-200 focus:border-primary-500 dark:focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 hover:border-zinc-400 dark:hover:border-zinc-600 focus:outline-none"
+                              />
+                              {targetPositions.country && (
+                                <motion.button
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  type="button"
+                                  onClick={() => {
+                                    setTargetPositions(prev => ({ ...prev, country: '', cities: [], currency: 'USD' }));
+                                    setCountryQuery('');
+                                    setCityQuery('');
+                                    setShowCountryDropdown(false);
+                                    setShowCityDropdown(false);
+                                  }}
+                                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                                >
+                                  <XMarkIcon className="h-4 w-4" />
+                                </motion.button>
+                              )}
+                            </div>
+                            
+                            {/* Country Dropdown */}
+                            <AnimatePresence>
+                              {showCountryDropdown && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="absolute z-50 w-full mt-2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-2 border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl max-h-72 overflow-y-auto"
+                                >
+                                  {countries
+                                    .filter(country => 
+                                      country.name.toLowerCase().includes(countryQuery.toLowerCase()) &&
+                                      country.name !== targetPositions.country
+                                    )
+                                    .map((country, index) => (
+                                      <motion.button
+                                        key={country.code}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ duration: 0.2, delay: index * 0.02 }}
+                                        type="button"
+                                        onClick={() => {
+                                          setTargetPositions(prev => ({ 
+                                            ...prev, 
+                                            country: country.name,
+                                            cities: [], // Clear cities when country changes
+                                            currency: country.currency
+                                          }));
+                                          setCountryQuery('');
+                                          setCityQuery('');
+                                          setShowCountryDropdown(false);
+                                          setShowCityDropdown(false);
+                                        }}
+                                        className="w-full px-4 py-3 text-left hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all duration-200 flex items-center gap-3 text-sm text-zinc-900 dark:text-white group border-b border-zinc-100 dark:border-zinc-800 last:border-0"
+                                      >
+                                        <span className="text-2xl">{country.flag}</span>
+                                        <span className="flex-1 font-medium">{country.name}</span>
+                                        <span className="text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded-md">
+                                          {country.currency}
+                                        </span>
+                                      </motion.button>
+                                    ))}
+                                  {countries.filter(country => 
+                                    country.name.toLowerCase().includes(countryQuery.toLowerCase()) &&
+                                    country.name !== targetPositions.country
+                                  ).length === 0 && (
+                                    <motion.div
+                                      initial={{ opacity: 0 }}
+                                      animate={{ opacity: 1 }}
+                                      className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400 text-center"
+                                    >
+                                      No countries found
+                                    </motion.div>
+                                  )}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                          
+                          {/* Selected Country Badge */}
+                          <AnimatePresence>
+                            {targetPositions.country && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.8, y: -10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                                transition={{ 
+                                  type: "spring",
+                                  stiffness: 300,
+                                  damping: 20
+                                }}
+                                className="mt-3 inline-flex items-center gap-2.5 px-5 py-2.5 bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-800 rounded-xl text-sm font-semibold text-primary-700 dark:text-primary-300"
+                              >
+                                <span className="text-xl">
+                                  {countries.find(c => c.name === targetPositions.country)?.flag || '🌍'}
+                                </span>
+                                <span>{targetPositions.country}</span>
+                                <span className="ml-2 text-xs bg-primary-200 dark:bg-primary-900/50 px-2 py-0.5 rounded-md">
+                                  {targetPositions.currency} {currencySymbols[targetPositions.currency] || targetPositions.currency}
+                                </span>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </Field>
+                      </motion.div>
+
+                      {/* City Selection - Only show after country is selected */}
+                      <AnimatePresence>
+                        {targetPositions.country && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.4, delay: 0.1 }}
+                            >
+                              <Field>
+                                <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-3 block">
+                                  Preferred Cities
+                                </Label>
+                                <div className="relative">
+                                  <div className="relative">
+                                    <MapPinIcon className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400 dark:text-zinc-500 pointer-events-none z-10" />
+                                    <input
+                                      type="text"
+                                      value={cityQuery}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        setCityQuery(value);
+                                        setShowCityDropdown(value.length > 0);
+                                      }}
+                                      onFocus={() => {
+                                        if (cityQuery || targetPositions.cities.length === 0) {
+                                          setShowCityDropdown(true);
+                                        }
+                                      }}
+                                      onBlur={() => {
+                                        setTimeout(() => setShowCityDropdown(false), 200);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && cityQuery.trim() && !targetPositions.cities.includes(cityQuery.trim())) {
+                                          e.preventDefault();
+                                          setTargetPositions(prev => ({ 
+                                            ...prev, 
+                                            cities: [...prev.cities, cityQuery.trim()] 
+                                          }));
+                                          setCityQuery('');
+                                          setShowCityDropdown(false);
+                                        }
+                                      }}
+                                      placeholder="Search and add cities..."
+                                      className="w-full h-14 pl-14 pr-14 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-500 dark:placeholder:text-zinc-400 text-base transition-all duration-200 focus:border-primary-500 dark:focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 hover:border-zinc-400 dark:hover:border-zinc-600 focus:outline-none"
+                                    />
+                                    {cityQuery && (
+                                      <motion.button
+                                        initial={{ opacity: 0, scale: 0.8 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        type="button"
+                                        onClick={() => {
+                                          setCityQuery('');
+                                          setShowCityDropdown(false);
+                                        }}
+                                        className="absolute right-5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                                      >
+                                        <XMarkIcon className="h-4 w-4" />
+                                      </motion.button>
+                                    )}
+                                  </div>
+                                  
+                                  {/* City Dropdown */}
+                                  <AnimatePresence>
+                                    {showCityDropdown && targetPositions.country && (
+                                      <motion.div
+                                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="absolute z-50 w-full mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl max-h-72 overflow-y-auto"
+                                      >
+                                        {(citiesByCountry[targetPositions.country] || [])
+                                          .filter(city => 
+                                            city.toLowerCase().includes(cityQuery.toLowerCase()) &&
+                                            !targetPositions.cities.includes(city)
+                                          )
+                                          .slice(0, 15)
+                                          .map((city, index) => (
+                                            <motion.button
+                                              key={city}
+                                              initial={{ opacity: 0, x: -10 }}
+                                              animate={{ opacity: 1, x: 0 }}
+                                              transition={{ duration: 0.2, delay: index * 0.02 }}
+                                              type="button"
+                                              onClick={() => {
+                                                if (!targetPositions.cities.includes(city)) {
+                                                  setTargetPositions(prev => ({ 
+                                                    ...prev, 
+                                                    cities: [...prev.cities, city]
+                                                  }));
+                                                  setCityQuery('');
+                                                  setShowCityDropdown(false);
+                                                }
+                                              }}
+                                              className="w-full px-4 py-3 text-left hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all duration-200 flex items-center gap-3 text-sm text-zinc-900 dark:text-white group border-b border-zinc-100 dark:border-zinc-800 last:border-0"
+                                            >
+                                              <MapPinIcon className="h-4 w-4 text-zinc-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 flex-shrink-0 transition-colors" />
+                                              <span className="flex-1 font-medium">{city}</span>
+                                              <PlusIcon className="h-4 w-4 text-zinc-300 group-hover:text-primary-600 dark:group-hover:text-primary-400 opacity-0 group-hover:opacity-100 transition-all" />
+                                            </motion.button>
+                                          ))}
+                                        {(citiesByCountry[targetPositions.country] || []).filter(city => 
+                                          city.toLowerCase().includes(cityQuery.toLowerCase()) &&
+                                          !targetPositions.cities.includes(city)
+                                        ).length === 0 && (
+                                          <motion.div
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400 text-center"
+                                          >
+                                            No cities found
+                                          </motion.div>
+                                        )}
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                                
+                                {/* Selected Cities Badges */}
+                                <AnimatePresence>
+                                  {targetPositions.cities.length > 0 && (
+                                    <motion.div
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: 'auto' }}
+                                      exit={{ opacity: 0, height: 0 }}
+                                      transition={{ duration: 0.2 }}
+                                      className="mt-3 flex flex-wrap gap-2"
+                                    >
+                                      {targetPositions.cities.map((city, index) => (
+                                        <motion.div
+                                          key={city}
+                                          initial={{ opacity: 0, scale: 0.8, x: -10 }}
+                                          animate={{ opacity: 1, scale: 1, x: 0 }}
+                                          exit={{ opacity: 0, scale: 0.8, x: 10 }}
+                                          transition={{ 
+                                            duration: 0.2,
+                                            delay: index * 0.05,
+                                            type: "spring",
+                                            stiffness: 300,
+                                            damping: 20
+                                          }}
+                                          className="group inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-accent-50 to-accent-100/50 dark:from-accent-900/30 dark:to-accent-800/20 border-2 border-accent-200 dark:border-accent-800 rounded-lg text-sm font-medium text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/50 transition-all duration-200"
+                                        >
+                                          <MapPinIcon className="h-3.5 w-3.5 text-accent-600 dark:text-accent-400" />
+                                          <span>{city}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setTargetPositions(prev => ({
+                                                ...prev,
+                                                cities: prev.cities.filter(c => c !== city)
+                                              }));
+                                            }}
+                                            className="ml-1 text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-200 opacity-60 hover:opacity-100 transition-opacity"
+                                          >
+                                            <XMarkIcon className="h-3.5 w-3.5" />
+                                          </button>
+                                        </motion.div>
+                                      ))}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </Field>
+                            </motion.div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Job Type Selection */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.4 }}
+                      >
+                        <Field>
+                          <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-4 block">
+                            Job Type
+                          </Label>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {jobTypes.map((type) => (
+                              <motion.button
+                                key={type.value}
+                                whileHover={{ scale: 1.02, y: -2 }}
+                                whileTap={{ scale: 0.98 }}
+                                type="button"
+                                onClick={() => setTargetPositions(prev => ({ ...prev, jobType: type.value }))}
+                                className={`h-16 rounded-2xl border transition-all duration-200 flex items-center justify-center gap-3 font-semibold text-base ${
+                                  targetPositions.jobType === type.value
+                                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 shadow-lg shadow-primary-500/20'
+                                    : 'border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 hover:border-primary-400 dark:hover:border-primary-700 hover:bg-white dark:hover:bg-zinc-800'
+                                }`}
+                              >
+                                <span className="text-2xl">{type.icon}</span>
+                                <span>{type.label}</span>
+                              </motion.button>
+                            ))}
+                          </div>
+                        </Field>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.5 }}
+                        className="grid grid-cols-1 md:grid-cols-3 gap-6"
+                      >
+                        <Field>
+                          <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-3 block">
+                            Minimum Salary
+                          </Label>
+                          <div className="relative">
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 flex items-center gap-2 pointer-events-none">
+                              <span className="text-lg font-bold text-zinc-700 dark:text-zinc-300">
+                                {currencySymbols[targetPositions.currency] || targetPositions.currency}
+                              </span>
+                              <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-200 dark:bg-zinc-700 px-2 py-0.5 rounded-md">
+                                {targetPositions.currency}
+                              </span>
+                            </div>
+                            <input
+                              type="number"
+                              value={targetPositions.salaryMin}
+                              onChange={(e) => setTargetPositions(prev => ({ ...prev, salaryMin: e.target.value }))}
+                              placeholder="0"
+                              className="w-full h-14 pl-28 pr-4 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-500 dark:placeholder:text-zinc-400 text-base transition-all duration-200 focus:border-primary-500 dark:focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 hover:border-zinc-400 dark:hover:border-zinc-600 focus:outline-none"
+                            />
+                          </div>
+                        </Field>
+
+                        <Field>
+                          <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-3 block">
+                            Maximum Salary
+                          </Label>
+                          <input
+                            type="number"
+                            value={targetPositions.salaryMax}
+                            onChange={(e) => setTargetPositions(prev => ({ ...prev, salaryMax: e.target.value }))}
+                            placeholder="0"
+                            className="w-full h-14 px-5 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-500 dark:placeholder:text-zinc-400 text-base transition-all duration-200 focus:border-primary-500 dark:focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 hover:border-zinc-400 dark:hover:border-zinc-600 focus:outline-none"
+                          />
+                        </Field>
+
+                        <Field>
+                          <Label className="text-base font-semibold text-zinc-900 dark:text-white mb-3 block">
+                            Period
+                          </Label>
+                          <div className="relative">
+                            <select
+                              value={targetPositions.salaryPeriod}
+                              onChange={(e) => setTargetPositions(prev => ({ ...prev, salaryPeriod: e.target.value }))}
+                              className="w-full h-14 px-5 pr-12 rounded-2xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white text-base transition-all duration-200 focus:border-primary-500 dark:focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 hover:border-zinc-400 dark:hover:border-zinc-600 cursor-pointer appearance-none"
+                            >
+                              <option value="year">Per Year</option>
+                              <option value="month">Per Month</option>
+                              <option value="hour">Per Hour</option>
+                            </select>
+                            <ChevronDownIcon className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400 dark:text-zinc-500 pointer-events-none" />
+                          </div>
+                        </Field>
+                      </motion.div>
+                    </FieldGroup>
+
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.5 }}
+                      className="flex items-center justify-end gap-4 pt-8 border-t border-zinc-200 dark:border-zinc-800"
+                    >
+                      <motion.button
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => navigateToStep(WIZARD_STEPS.ACTION_OPTIONS)}
+                        className="px-8 py-4 text-base font-semibold text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-2xl transition-all duration-200"
+                      >
+                        Skip
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02, y: -2, boxShadow: "0 20px 40px -10px rgba(239, 68, 68, 0.4)" }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={async () => {
+                          // Save target positions to resume
+                          if (currentResume) {
+                            const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+                            const resumeId = currentResume._id || currentResume.id;
+                            try {
+                              await fetch(`${API_URL}/api/resume-builder/${resumeId}`, {
+                                method: 'PATCH',
+                                headers: {
+                                  'Authorization': `Bearer ${token}`,
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ targetPositions }),
+                              });
+                            } catch (error) {
+                              console.error('Error saving target positions:', error);
+                            }
+                          }
+                          navigateToStep(WIZARD_STEPS.ACTION_OPTIONS);
+                        }}
+                        className="px-10 py-4 text-base font-bold text-white bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                      >
+                        Continue
+                      </motion.button>
+                    </motion.div>
+                  </motion.div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Options Step */}
+            {currentStep === WIZARD_STEPS.ACTION_OPTIONS && (
+              <div className="w-full px-6 py-8 bg-white dark:bg-zinc-900 min-h-[80vh]">
+                <div className="max-w-3xl mx-auto">
+                  <div className="text-center mb-8">
+                    <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">
+                      What would you like to do next?
+                    </h1>
+                    <p className="text-zinc-600 dark:text-zinc-400">
+                      Your resume is ready! Choose how you'd like to use it.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    {/* Email Resume Option */}
+                    <div
+                      onClick={() => {
+                        // Handle email resume
+                        const resumeId = currentResume?._id || currentResume?.id;
+                        if (resumeId) {
+                          router.push(`/candidate/resume-builder?step=editor&resume=${resumeId}`);
+                          toast.info('Email functionality coming soon!');
+                        }
+                      }}
+                      className="group p-8 rounded-xl border-2 border-zinc-200 dark:border-zinc-800 hover:border-primary-500 dark:hover:border-primary-400 bg-white dark:bg-zinc-900 cursor-pointer transition-all hover:shadow-lg"
+                    >
+                      <div className="flex flex-col items-center text-center">
+                        <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mb-4 group-hover:bg-primary-200 dark:group-hover:bg-primary-900/50 transition-colors">
+                          <EnvelopeIcon className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-zinc-950 dark:text-white mb-2">
+                          Email Resume
+                        </h3>
+                        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                          Send your resume directly to employers or yourself via email
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Use for Application Option */}
+                    <div
+                      onClick={async () => {
+                        // Handle use for application
+                        const resumeId = currentResume?._id || currentResume?.id;
+                        if (resumeId) {
+                          // Save resume first
+                          try {
+                            const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+                            await fetch(`${API_URL}/api/resume-builder/${resumeId}`, {
+                              method: 'PATCH',
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({ 
+                                ...targetPositions,
+                                readyForApplication: true 
+                              }),
+                            });
+                            
+                            // Fetch matching jobs
+                            setLoadingMatchingJobs(true);
+                            const recommendationsResponse = await fetch(`${API_URL}/api/matching/recommendations?limit=10`, {
+                              headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json',
+                              },
+                            });
+                            
+                            if (recommendationsResponse.ok) {
+                              const data = await recommendationsResponse.json();
+                              const recommendations = data.recommendations || data.data?.recommendations || [];
+                              if (recommendations && recommendations.length > 0) {
+                                setMatchingJobs(recommendations);
+                                setHasMatchingJobs(true);
+                                navigateToStep(WIZARD_STEPS.MATCHING_JOBS);
+                              } else {
+                                setHasMatchingJobs(false);
+                                navigateToStep(WIZARD_STEPS.MATCHING_JOBS);
+                              }
+                            } else {
+                              // If profile not complete or other error, still show the message
+                              const errorData = await recommendationsResponse.json().catch(() => ({}));
+                              if (errorData.error?.includes('profile')) {
+                                toast.info('Please complete your profile for better job matches');
+                              }
+                              setHasMatchingJobs(false);
+                              navigateToStep(WIZARD_STEPS.MATCHING_JOBS);
+                            }
+                            setLoadingMatchingJobs(false);
+                          } catch (error) {
+                            console.error('Error saving resume or fetching jobs:', error);
+                            toast.error('Failed to load matching jobs');
+                            setLoadingMatchingJobs(false);
+                            setHasMatchingJobs(false);
+                            navigateToStep(WIZARD_STEPS.MATCHING_JOBS);
+                          }
+                        }
+                      }}
+                      className="group p-8 rounded-xl border-2 border-zinc-200 dark:border-zinc-800 hover:border-primary-500 dark:hover:border-primary-400 bg-white dark:bg-zinc-900 cursor-pointer transition-all hover:shadow-lg"
+                    >
+                      <div className="flex flex-col items-center text-center">
+                        <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mb-4 group-hover:bg-primary-200 dark:group-hover:bg-primary-900/50 transition-colors">
+                          <DocumentTextIcon className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-zinc-950 dark:text-white mb-2">
+                          Use for Application
+                        </h3>
+                        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                          Browse jobs and apply with this resume
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-4">
+                    <button
+                      onClick={() => navigateToStep(WIZARD_STEPS.EDITOR)}
+                      className="px-6 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                    >
+                      Edit Resume
+                    </button>
+                    <button
+                      onClick={() => navigateToStep(WIZARD_STEPS.DASHBOARD)}
+                      className="px-6 py-3 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+                    >
+                      Back to Dashboard
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Matching Jobs Step */}
+            {currentStep === WIZARD_STEPS.MATCHING_JOBS && (
+              <div className="w-full px-4 sm:px-6 py-12 bg-white dark:bg-zinc-950 min-h-screen">
+                <div className="max-w-4xl mx-auto">
+                  <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="text-center mb-12"
+                  >
+                    <h1 className="text-5xl font-extrabold text-zinc-900 dark:text-white mb-4 tracking-tight">
+                      {hasMatchingJobs ? 'Matching Jobs Found' : 'Job Search Initiated'}
+                    </h1>
+                    <p className="text-xl text-zinc-600 dark:text-zinc-400 font-light">
+                      {hasMatchingJobs 
+                        ? 'We found some great matches for your profile'
+                        : 'Our AI and Human Agents will search for jobs matching your preferences'}
+                    </p>
+                  </motion.div>
+
+                  {loadingMatchingJobs ? (
+                    <div className="flex items-center justify-center py-20">
+                      <ArrowPathIcon className="h-12 w-12 text-primary-600 dark:text-primary-400 animate-spin" />
+                    </div>
+                  ) : hasMatchingJobs ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.1 }}
+                      className="space-y-4"
+                    >
+                      {matchingJobs.map((match, index) => (
+                        <motion.div
+                          key={match.job._id || match.job.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3, delay: index * 0.1 }}
+                          className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-lg p-6 hover:shadow-xl transition-all"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">
+                                {match.job.title}
+                              </h3>
+                              <p className="text-zinc-600 dark:text-zinc-400 mb-3">
+                                {match.job.company} • {match.job.location}
+                              </p>
+                              <div className="flex items-center gap-4 mb-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                                    {match.matchScore}% Match
+                                  </span>
+                                </div>
+                                {match.matchedSkills && match.matchedSkills.length > 0 && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                      {match.matchedSkills.length} skills matched
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              {match.job.description && (
+                                <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2 mb-4">
+                                  {match.job.description.substring(0, 200)}...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 mt-4">
+                            <button
+                              onClick={() => {
+                                const jobId = match.job._id || match.job.id;
+                                router.push(`/candidate/jobs/${jobId}?resume=${currentResume?._id || currentResume?.id}`);
+                              }}
+                              className="px-6 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                            >
+                              View Details
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+                                  const jobId = match.job._id || match.job.id;
+                                  const response = await fetch(`${API_URL}/api/applications/apply/${jobId}`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`,
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      resumeId: currentResume?._id || currentResume?.id,
+                                    }),
+                                  });
+                                  
+                                  if (response.ok) {
+                                    toast.success('Application submitted successfully!');
+                                  } else {
+                                    const error = await response.json();
+                                    toast.error(error.error || 'Failed to apply');
+                                  }
+                                } catch (error) {
+                                  console.error('Error applying:', error);
+                                  toast.error('Failed to submit application');
+                                }
+                              }}
+                              className="px-6 py-2.5 text-sm font-semibold text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all duration-200"
+                            >
+                              Apply Now
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
+                      
+                      <div className="mt-8 text-center">
+                        <button
+                          onClick={() => router.push(`/candidate/jobs?resume=${currentResume?._id || currentResume?.id}`)}
+                          className="px-8 py-3 text-base font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                        >
+                          Browse All Jobs →
+                        </button>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.5, delay: 0.1 }}
+                      className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl p-12 text-center"
+                    >
+                      <div className="w-20 h-20 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mx-auto mb-6">
+                        <SparklesIcon className="w-10 h-10 text-primary-600 dark:text-primary-400" />
+                      </div>
+                      <h2 className="text-2xl font-bold text-zinc-900 dark:text-white mb-4">
+                        AI & Human Agent Search Activated
+                      </h2>
+                      <p className="text-lg text-zinc-600 dark:text-zinc-400 mb-8 max-w-2xl mx-auto">
+                        Our AI and Human Agents are now actively searching for jobs that match your preferences. 
+                        You'll be notified when we find matching opportunities.
+                      </p>
+                      <div className="space-y-4 mb-8">
+                        <div className="flex items-center justify-center gap-3 text-zinc-700 dark:text-zinc-300">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                          <span>Resume saved and ready for applications</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-3 text-zinc-700 dark:text-zinc-300">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                          <span>Job search preferences saved</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-3 text-zinc-700 dark:text-zinc-300">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                          <span>Active job matching enabled</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center gap-4">
+                        <button
+                          onClick={() => router.push(`/candidate/jobs?resume=${currentResume?._id || currentResume?.id}`)}
+                          className="px-8 py-3 text-base font-semibold text-white bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+                        >
+                          Browse Available Jobs
+                        </button>
+                        <button
+                          onClick={() => navigateToStep(WIZARD_STEPS.DASHBOARD)}
+                          className="px-8 py-3 text-base font-semibold text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl transition-all duration-200"
+                        >
+                          Back to Dashboard
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
               </div>
             )}
@@ -6279,7 +7960,7 @@ export default function AIResumeBuilder() {
                         Cancel
                       </Button>
                       <Button
-                        color="blue"
+                        className="bg-primary-500 hover:bg-primary-600 text-white"
                         onClick={handleCreateNew}
                         disabled={!resumeNameInput.trim()}
                       >

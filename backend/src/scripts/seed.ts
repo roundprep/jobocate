@@ -24,6 +24,7 @@ const FeatureKeys = {
   JOB_ALERTS: 'job_alerts',
   AGENT_TYPE: 'agent_type',
   SUPPORT_LEVEL: 'support_level',
+  INTERVIEW_SESSIONS_PER_MONTH: 'interview_sessions_per_month',
 };
 
 interface PlanConfig {
@@ -127,6 +128,7 @@ const ENTITLEMENTS: Record<PlanType, EntitlementConfig[]> = {
     { featureKey: FeatureKeys.AI_CREDITS_PER_MONTH, featureName: 'AI Credits per Month', type: 'limit', value: 0 },
     { featureKey: FeatureKeys.SAVED_JOBS, featureName: 'Saved Jobs', type: 'limit', value: 10 },
     { featureKey: FeatureKeys.JOB_ALERTS, featureName: 'Job Alerts', type: 'limit', value: 1 },
+    { featureKey: FeatureKeys.INTERVIEW_SESSIONS_PER_MONTH, featureName: 'Interview Sessions per Month', type: 'limit', value: 0 },
     { featureKey: FeatureKeys.AGENT_TYPE, featureName: 'Agent Type', type: 'tier', value: 'ai' },
     { featureKey: FeatureKeys.SUPPORT_LEVEL, featureName: 'Support Level', type: 'tier', value: 'community' },
   ],
@@ -143,6 +145,7 @@ const ENTITLEMENTS: Record<PlanType, EntitlementConfig[]> = {
     { featureKey: FeatureKeys.AI_CREDITS_PER_MONTH, featureName: 'AI Credits per Month', type: 'limit', value: 100 },
     { featureKey: FeatureKeys.SAVED_JOBS, featureName: 'Saved Jobs', type: 'limit', value: 50 },
     { featureKey: FeatureKeys.JOB_ALERTS, featureName: 'Job Alerts', type: 'limit', value: 5 },
+    { featureKey: FeatureKeys.INTERVIEW_SESSIONS_PER_MONTH, featureName: 'Interview Sessions per Month', type: 'limit', value: 5 },
     { featureKey: FeatureKeys.AGENT_TYPE, featureName: 'Agent Type', type: 'tier', value: 'ai' },
     { featureKey: FeatureKeys.SUPPORT_LEVEL, featureName: 'Support Level', type: 'tier', value: 'email' },
   ],
@@ -159,6 +162,7 @@ const ENTITLEMENTS: Record<PlanType, EntitlementConfig[]> = {
     { featureKey: FeatureKeys.AI_CREDITS_PER_MONTH, featureName: 'AI Credits per Month', type: 'limit', value: 500 },
     { featureKey: FeatureKeys.SAVED_JOBS, featureName: 'Saved Jobs', type: 'limit', value: -1 },
     { featureKey: FeatureKeys.JOB_ALERTS, featureName: 'Job Alerts', type: 'limit', value: -1 },
+    { featureKey: FeatureKeys.INTERVIEW_SESSIONS_PER_MONTH, featureName: 'Interview Sessions per Month', type: 'limit', value: 20 },
     { featureKey: FeatureKeys.AGENT_TYPE, featureName: 'Agent Type', type: 'tier', value: 'human' },
     { featureKey: FeatureKeys.SUPPORT_LEVEL, featureName: 'Support Level', type: 'tier', value: 'priority' },
   ],
@@ -175,6 +179,7 @@ const ENTITLEMENTS: Record<PlanType, EntitlementConfig[]> = {
     { featureKey: FeatureKeys.AI_CREDITS_PER_MONTH, featureName: 'AI Credits per Month', type: 'limit', value: -1 },
     { featureKey: FeatureKeys.SAVED_JOBS, featureName: 'Saved Jobs', type: 'limit', value: -1 },
     { featureKey: FeatureKeys.JOB_ALERTS, featureName: 'Job Alerts', type: 'limit', value: -1 },
+    { featureKey: FeatureKeys.INTERVIEW_SESSIONS_PER_MONTH, featureName: 'Interview Sessions per Month', type: 'limit', value: -1 },
     { featureKey: FeatureKeys.AGENT_TYPE, featureName: 'Agent Type', type: 'tier', value: 'dedicated' },
     { featureKey: FeatureKeys.SUPPORT_LEVEL, featureName: 'Support Level', type: 'tier', value: 'dedicated' },
   ],

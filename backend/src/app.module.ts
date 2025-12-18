@@ -20,6 +20,9 @@ import { CoverLettersModule } from './cover-letters/cover-letters.module';
 import { ResumeBuilderModule } from './resume-builder/resume-builder.module';
 import { BillingModule } from './billing/billing.module';
 import { EntitlementModule } from './entitlement/entitlement.module';
+import { LLMModule } from './llm/llm.module';
+import { JobTrackerModule } from './job-tracker/job-tracker.module';
+import { InterviewBuddyModule } from './interview-buddy/interview-buddy.module';
 import { HealthController } from './health/health.controller';
 import { LoggerModule } from './common/logger/logger.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -93,6 +96,9 @@ function getEnvFilePath(): string {
     ResumeBuilderModule,
     BillingModule,
     EntitlementModule,
+    LLMModule,
+    JobTrackerModule,
+    InterviewBuddyModule,
   ],
   controllers: [HealthController],
   providers: [

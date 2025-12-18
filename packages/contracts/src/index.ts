@@ -1,11 +1,7 @@
-// ==================== SCHEMAS ====================
+// Export all schemas
 export * from './schemas/auth';
 export * from './schemas/billing';
 export * from './schemas/user';
-
-// ==================== TYPES ====================
+export * from './schemas/llm';
+export * from './schemas/interview';
 export * from './types/api';
-
-// Re-export Zod for convenience
-export { z } from 'zod';
-

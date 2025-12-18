@@ -75,46 +75,84 @@ export default function ProfileCompletionBanner() {
         onClose={() => setShowWizard(false)}
         onComplete={handleWizardComplete}
       />
-    <div className="bg-primary-50 dark:bg-primary-900/20 border-l-4 border-primary-400 dark:border-primary-500 p-4 mb-6 rounded-lg">
-      <div className="flex items-start gap-4">
-        <div className="flex-shrink-0">
-          <ProfileCompletionGauge percentage={completion.completionPercentage} size="sm" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <h3 className="text-sm font-medium text-primary-800 dark:text-primary-200">
-                Complete your profile to get better matches
-              </h3>
-              <div className="mt-2 text-sm text-primary-700 dark:text-primary-300">
-                <p>
-                  Your profile is {completion.completionPercentage}% complete. 
-                  {completion.missingFields.length > 0 && (
-                    <span> Missing: {completion.missingFields.slice(0, 3).join(', ')}
-                      {completion.missingFields.length > 3 && ` +${completion.missingFields.length - 3} more`}
-                    </span>
-                  )}
-                </p>
+      <div className="relative bg-pink-50 dark:bg-pink-900/10 border-l-4 border-red-500 dark:border-red-400 rounded-xl p-5 mb-6 shadow-sm">
+        <div className="flex items-center gap-5">
+          {/* Left: Circular Progress Indicator */}
+          <div className="flex-shrink-0 relative">
+            <div className="relative w-20 h-20">
+              <svg className="transform -rotate-90 w-20 h-20" viewBox="0 0 80 80">
+                {/* Background circle */}
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="32"
+                  stroke="currentColor"
+                  strokeWidth="6"
+                  fill="none"
+                  className="text-gray-200 dark:text-gray-700"
+                />
+                {/* Progress circle */}
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="32"
+                  stroke="currentColor"
+                  strokeWidth="6"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 32}`}
+                  strokeDashoffset={`${2 * Math.PI * 32 * (1 - completion.completionPercentage / 100)}`}
+                  className="text-red-500 dark:text-red-400 transition-all duration-500"
+                />
+              </svg>
+              {/* Percentage text */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-xl font-bold text-red-600 dark:text-red-400">
+                  {completion.completionPercentage}%
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Complete
+                </span>
               </div>
             </div>
-            <div className="ml-4 flex items-center space-x-2">
-              <button
-                onClick={handleCompleteProfile}
-                className="bg-primary-600 dark:bg-primary-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-primary-700 dark:hover:bg-primary-600"
-              >
-                Complete Now
-              </button>
-              <button
-                onClick={handleClose}
-                className="text-primary-400 dark:text-primary-500 hover:text-primary-500 dark:hover:text-primary-400"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
+          </div>
+
+          {/* Middle: Text Content */}
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-red-600 dark:text-red-400 mb-1.5">
+              Complete your profile to get better matches
+            </h3>
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              Your profile is <span className="font-medium">{completion.completionPercentage}%</span> complete.{' '}
+              {completion.missingFields.length > 0 && (
+                <span>
+                  Missing: <span className="font-medium">{completion.missingFields.slice(0, 3).join(', ')}</span>
+                  {completion.missingFields.length > 3 && (
+                    <span> +{completion.missingFields.length - 3} more</span>
+                  )}
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Right: Action Button and Close */}
+          <div className="flex-shrink-0 flex items-center gap-3">
+            <button
+              onClick={handleCompleteProfile}
+              className="bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 hover:scale-105 shadow-sm hover:shadow-md"
+            >
+              Complete Now
+            </button>
+            <button
+              onClick={handleClose}
+              className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Close"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
           </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

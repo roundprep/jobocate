@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 
 export type JobDocument = Job & Document;
 
@@ -41,8 +41,17 @@ export class Job {
   @Prop({ default: '' })
   externalUrl?: string;
 
-  @Prop({ unique: true, required: true })
-  externalId: string;
+  @Prop({ default: '' })
+  canonicalUrl?: string; // Normalized URL for deduplication
+
+  @Prop({ unique: true, required: false })
+  externalId?: string; // Made optional for manual entries
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: false, index: true })
+  addedBy?: Types.ObjectId; // User who added this job manually
+
+  @Prop({ default: false })
+  isManualEntry?: boolean; // True if manually added/edited by user
 
   @Prop({ default: true })
   isActive?: boolean;

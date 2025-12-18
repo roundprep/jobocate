@@ -1,295 +1,255 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import Layout from '@/components/layout';
-import SEO from '@/components/seo/SEO';
-import { getMyApplications, retryApplication, cancelApplication, processApplicationQueue } from '@/services/api';
+import { motion } from 'framer-motion';
+import {
+  PlusIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
+} from '@heroicons/react/24/outline';
 import { toast } from 'react-toastify';
+import { API_URL } from '@/config/api';
 
-export default function MyApplications() {
+const STATUSES = {
+  pending: { label: 'Applied', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
+  submitted: { label: 'Submitted', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' },
+  reviewing: { label: 'Reviewing', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
+  interviewed: { label: 'Interviewed', color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200' },
+  rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
+  accepted: { label: 'Accepted', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+};
+
+export default function ApplicationsDashboard() {
   const router = useRouter();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [processingId, setProcessingId] = useState(null);
-  const [processingQueue, setProcessingQueue] = useState(false);
+  const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'list'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     fetchApplications();
-  }, [statusFilter]);
+    fetchStats();
+  }, [statusFilter, searchQuery]);
 
   const fetchApplications = async () => {
     try {
-      const filters = statusFilter !== 'all' ? { status: statusFilter.toUpperCase() } : {};
-      const response = await getMyApplications(filters);
-      setApplications(response.data || []);
+      setLoading(true);
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      const params = new URLSearchParams();
+      if (statusFilter.length > 0) {
+        statusFilter.forEach(status => params.append('status', status));
+      }
+      if (searchQuery) {
+        params.append('search', searchQuery);
+      }
+
+      const response = await fetch(`${API_URL}/api/job-tracker/applications?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setApplications(data);
+      }
     } catch (error) {
-      toast.error(error.message || 'Failed to load applications');
+      console.error('Error fetching applications:', error);
+      toast.error('Failed to load applications');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleProcessQueue = async () => {
-    setProcessingQueue(true);
+  const fetchStats = async () => {
     try {
-      const response = await processApplicationQueue(10);
-      toast.success(`Processed ${response.data.processed} applications!`);
-      fetchApplications();
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/job-tracker/applications/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
     } catch (error) {
-      toast.error(error.message || 'Failed to process queue');
-    } finally {
-      setProcessingQueue(false);
+      console.error('Error fetching stats:', error);
     }
   };
 
-  const handleRetry = async (applicationId) => {
-    setProcessingId(applicationId);
-    try {
-      await retryApplication(applicationId);
-      toast.success('Application queued for retry');
-      fetchApplications();
-    } catch (error) {
-      toast.error(error.message || 'Failed to retry application');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const handleCancel = async (applicationId) => {
-    if (!confirm('Are you sure you want to cancel this application?')) return;
-    
-    setProcessingId(applicationId);
-    try {
-      await cancelApplication(applicationId);
-      toast.success('Application cancelled');
-      setApplications(apps => apps.filter(app => app._id !== applicationId));
-    } catch (error) {
-      toast.error(error.message || 'Failed to cancel application');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    const styles = {
-      QUEUED: 'bg-yellow-100 text-yellow-800',
-      PROCESSING: 'bg-blue-100 text-blue-800',
-      COMPLETED: 'bg-green-100 text-green-800',
-      FAILED: 'bg-red-100 text-red-800',
-    };
-    return styles[status] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'QUEUED':
-        return '⏳';
-      case 'PROCESSING':
-        return '⚙️';
-      case 'COMPLETED':
-        return '✅';
-      case 'FAILED':
-        return '❌';
-      default:
-        return '📋';
-    }
-  };
+  const groupedByStatus = applications.reduce((acc, app) => {
+    const status = app.status || 'pending';
+    if (!acc[status]) acc[status] = [];
+    acc[status].push(app);
+    return acc;
+  }, {});
 
   if (loading) {
     return (
-      <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading applications...</p>
-          </div>
-        </div>
-      </Layout>
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
     );
   }
 
-  const queuedCount = applications.filter(app => app.status === 'QUEUED').length;
-
   return (
-    <>
-      <SEO
-        title="My Applications - Application Queue | JobOcate"
-        description="Track and manage your job applications powered by AI"
-      />
-      <Layout>
-        <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            {/* Header */}
-            <div className="mb-8">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                    My Applications
-                  </h1>
-                  <p className="text-xl text-gray-600">
-                    {applications.length} total application{applications.length !== 1 ? 's' : ''}
-                  </p>
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Applications</h1>
+            <button
+              onClick={() => router.push('/candidate/job-tracker/ingest')}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-2"
+            >
+              <PlusIcon className="h-5 w-5" />
+              Add Job
+            </button>
+          </div>
+
+          {/* Stats */}
+          {stats && (
+            <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800">
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">Total</div>
+                <div className="text-2xl font-bold text-zinc-900 dark:text-white">{stats.total}</div>
+              </div>
+              {Object.entries(stats.byStatus || {}).slice(0, 3).map(([status, count]) => (
+                <div key={status} className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800">
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">{STATUSES[status]?.label || status}</div>
+                  <div className="text-2xl font-bold text-zinc-900 dark:text-white">{count}</div>
                 </div>
-                {queuedCount > 0 && (
-                  <button
-                    onClick={handleProcessQueue}
-                    disabled={processingQueue}
-                    className="px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 disabled:opacity-50"
-                  >
-                    {processingQueue ? 'Processing...' : `Process Queue (${queuedCount})`}
-                  </button>
-                )}
-              </div>
-
-              {/* Status Filter */}
-              <div className="flex gap-2">
-                {['all', 'queued', 'processing', 'completed', 'failed'].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                      statusFilter === status
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </button>
-                ))}
-              </div>
+              ))}
             </div>
+          )}
 
-            {applications.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-8 text-center">
-                <svg
-                  className="mx-auto h-16 w-16 text-gray-400 mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  No applications yet
-                </h3>
-                <p className="text-gray-600 mb-6">
-                  Queue applications from your interested jobs to get started
-                </p>
-                <button
-                  onClick={() => router.push('/candidate/interested')}
-                  className="px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700"
-                >
-                  View Interested Jobs
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {applications.map((application) => {
-                  const job = application.jobId;
-                  return (
-                    <div
-                      key={application._id}
-                      className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow"
-                    >
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h2 className="text-2xl font-bold text-gray-900">
-                              {job.title}
-                            </h2>
-                            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusBadge(application.status)}`}>
-                              {getStatusIcon(application.status)} {application.status}
-                            </span>
-                          </div>
-                          <p className="text-lg text-gray-700 mb-1">
-                            {job.companyName}
-                          </p>
-                          <p className="text-gray-600">
-                            {job.location} • {job.jobType}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Timeline */}
-                      <div className="mb-4 text-sm text-gray-600">
-                        <p>Queued: {new Date(application.queuedAt).toLocaleString()}</p>
-                        {application.processedAt && (
-                          <p>Processed: {new Date(application.processedAt).toLocaleString()}</p>
-                        )}
-                        {application.completedAt && (
-                          <p>Completed: {new Date(application.completedAt).toLocaleString()}</p>
-                        )}
-                      </div>
-
-                      {/* Cover Letter Preview */}
-                      {application.generatedCoverLetter && (
-                        <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                          <h4 className="font-semibold text-gray-900 mb-2">AI-Generated Cover Letter:</h4>
-                          <p className="text-gray-700 text-sm whitespace-pre-wrap line-clamp-4">
-                            {application.generatedCoverLetter}
-                          </p>
-                          <button
-                            onClick={() => router.push(`/candidate/applications/${application._id}`)}
-                            className="text-orange-600 hover:text-orange-700 text-sm font-medium mt-2"
-                          >
-                            View Full Letter →
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Error Message */}
-                      {application.status === 'FAILED' && application.errorMessage && (
-                        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                          <h4 className="font-semibold text-red-900 mb-2">Error:</h4>
-                          <p className="text-red-800 text-sm">{application.errorMessage}</p>
-                          {application.retryCount > 0 && (
-                            <p className="text-red-600 text-xs mt-1">Retry attempts: {application.retryCount}</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-4">
-                        <button
-                          onClick={() => router.push(`/jobs/${job._id}`)}
-                          className="flex-1 px-6 py-3 bg-gray-200 text-gray-800 font-semibold rounded-lg hover:bg-gray-300 transition-colors"
-                        >
-                          View Job
-                        </button>
-                        
-                        {application.status === 'FAILED' && (
-                          <button
-                            onClick={() => handleRetry(application._id)}
-                            disabled={processingId === application._id}
-                            className="px-6 py-3 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors"
-                          >
-                            Retry
-                          </button>
-                        )}
-                        
-                        {(application.status === 'QUEUED' || application.status === 'FAILED') && (
-                          <button
-                            onClick={() => handleCancel(application._id)}
-                            disabled={processingId === application._id}
-                            className="px-6 py-3 bg-red-100 text-red-800 font-semibold rounded-lg hover:bg-red-200 disabled:opacity-50 transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          {/* Filters and View Toggle */}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-1 relative">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-zinc-400" />
+              <input
+                type="text"
+                placeholder="Search applications..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`p-2 rounded-lg ${viewMode === 'kanban' ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
+              >
+                <Squares2X2Icon className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
+              >
+                <ListBulletIcon className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
-      </Layout>
-    </>
+
+        {/* Kanban View */}
+        {viewMode === 'kanban' && (
+          <div className="grid grid-cols-6 gap-4 overflow-x-auto">
+            {Object.keys(STATUSES).map((status) => (
+              <div key={status} className="min-w-[280px]">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="font-semibold text-zinc-700 dark:text-zinc-300">
+                    {STATUSES[status].label}
+                  </h3>
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {(groupedByStatus[status] || []).length}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {(groupedByStatus[status] || []).map((app) => (
+                    <ApplicationCard
+                      key={app._id}
+                      application={app}
+                      onClick={() => router.push(`/candidate/applications/${app._id}`)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* List View */}
+        {viewMode === 'list' && (
+          <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {applications.map((app) => (
+                <ApplicationListItem
+                  key={app._id}
+                  application={app}
+                  onClick={() => router.push(`/candidate/applications/${app._id}`)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ApplicationCard({ application, onClick }) {
+  const job = application.jobId || {};
+  const status = application.status || 'pending';
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      onClick={onClick}
+      className="bg-white dark:bg-zinc-900 rounded-lg p-4 border border-zinc-200 dark:border-zinc-800 cursor-pointer hover:shadow-lg transition-shadow"
+    >
+      <h4 className="font-semibold text-zinc-900 dark:text-white mb-1">{job.title || 'Untitled'}</h4>
+      <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-2">{job.companyName || 'Unknown'}</p>
+      <div className="flex items-center justify-between">
+        <span className={`text-xs px-2 py-1 rounded-full ${STATUSES[status]?.color || ''}`}>
+          {STATUSES[status]?.label || status}
+        </span>
+        {application.matchScore && (
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            {application.matchScore}% match
+          </span>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function ApplicationListItem({ application, onClick }) {
+  const job = application.jobId || {};
+  const status = application.status || 'pending';
+
+  return (
+    <motion.div
+      whileHover={{ backgroundColor: 'rgba(0,0,0,0.02)' }}
+      onClick={onClick}
+      className="p-4 cursor-pointer flex items-center justify-between"
+    >
+      <div className="flex-1">
+        <h4 className="font-semibold text-zinc-900 dark:text-white">{job.title || 'Untitled'}</h4>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{job.companyName || 'Unknown'} • {job.location || 'N/A'}</p>
+      </div>
+      <div className="flex items-center gap-4">
+        {application.matchScore && (
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            {application.matchScore}% match
+          </span>
+        )}
+        <span className={`text-xs px-3 py-1 rounded-full ${STATUSES[status]?.color || ''}`}>
+          {STATUSES[status]?.label || status}
+        </span>
+      </div>
+    </motion.div>
   );
 }

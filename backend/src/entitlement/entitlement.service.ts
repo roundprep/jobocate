@@ -61,24 +61,63 @@ export class EntitlementService {
       };
     }
 
-    // Get the plan
-    const plan = await this.planModel.findOne({
-      type: user.currentPlanType || 'FREE',
+    // Get the plan - default to FREE if not set
+    const planType = user.currentPlanType || 'FREE';
+    let plan = await this.planModel.findOne({
+      type: planType,
       isActive: true,
     });
 
+    // If plan not found, try to create a default FREE plan
+    if (!plan && planType === 'FREE') {
+      this.logger.warn(`FREE plan not found, creating default plan`);
+      try {
+        plan = await this.planModel.create({
+          name: 'Free',
+          type: 'FREE',
+          description: 'Get started with basic job search features',
+          priceMonthly: 0,
+          priceYearly: 0,
+          isActive: true,
+        });
+        this.logger.log('Created default FREE plan');
+      } catch (error) {
+        this.logger.error('Failed to create default FREE plan:', error);
+      }
+    }
+
     if (!plan) {
+      this.logger.error(`Plan not found for type: ${planType}`);
       return {
         allowed: false,
-        message: 'Plan not found',
+        message: `Plan not found. Please contact support.`,
       };
     }
 
     // Get the entitlement for this feature
-    const entitlement = await this.entitlementModel.findOne({
+    let entitlement = await this.entitlementModel.findOne({
       planId: plan._id,
       featureKey,
     });
+
+    // If entitlement doesn't exist and it's the FREE plan, create a default (deny) entitlement
+    if (!entitlement && plan.type === 'FREE') {
+      this.logger.warn(`Entitlement "${featureKey}" not found for FREE plan, creating default (denied)`);
+      try {
+        // Default to denied for FREE plan if not specified
+        const defaultValue = featureKey.includes('per_month') || featureKey.includes('per_month') ? 0 : false;
+        entitlement = await this.entitlementModel.create({
+          planId: plan._id,
+          featureKey,
+          featureName: featureKey.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          type: typeof defaultValue === 'number' ? 'limit' : 'boolean',
+          value: defaultValue,
+        });
+        this.logger.log(`Created default entitlement for ${featureKey}`);
+      } catch (error) {
+        this.logger.error(`Failed to create default entitlement for ${featureKey}:`, error);
+      }
+    }
 
     if (!entitlement) {
       // Feature not defined for this plan - deny by default
