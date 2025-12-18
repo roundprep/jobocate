@@ -5,9 +5,34 @@ WORKDIR /app
 
 # Copy shared workspace packages that local file dependencies rely on
 COPY packages /packages
+COPY tsconfig.base.json /tsconfig.base.json
+
+# Build contracts package
+WORKDIR /packages/contracts
+RUN npm install
+RUN npm run build
+
+# Set working directory back to app
+WORKDIR /app
 
 # Install backend dependencies first for better layer caching
 COPY backend/package*.json backend/yarn.lock ./
+
+# Install Chromium and dependencies for Puppeteer
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    nodejs \
+    yarn
+
+# Tell Puppeteer to skip installing Chrome. We'll be using the installed package.
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 RUN yarn install --frozen-lockfile
 
 # Copy application files

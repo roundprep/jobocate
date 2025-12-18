@@ -366,7 +366,8 @@ Provide enhanced education entries with:
       this.logger.debug('Launching Puppeteer browser...');
       browser = await require('puppeteer').launch({
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        headless: 'new'
+        headless: 'new',
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
       });
       const page = await browser.newPage();
 
@@ -379,7 +380,8 @@ Provide enhanced education entries with:
       });
 
       // Navigate to the new preview route
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      // Use INTERNAL_FRONTEND_URL for container-to-container communication if available
+      const frontendUrl = process.env.INTERNAL_FRONTEND_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
       
       // Generate a temporary token for Puppeteer to access the preview page
       let previewUrl = `${frontendUrl}/resume/preview/${resume._id}`;
