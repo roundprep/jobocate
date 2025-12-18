@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -6,6 +6,7 @@ import { interviewApi } from '@/lib/interview-api';
 import { resumeApi } from '@/lib/resume-api';
 import { API_URL } from '@/config/api';
 import { toast } from 'react-toastify';
+import { Dialog, Transition } from '@headlessui/react';
 import {
   MicrophoneIcon,
   DocumentTextIcon,
@@ -15,6 +16,8 @@ import {
   ChevronRightIcon,
   ClipboardDocumentIcon,
   MagnifyingGlassIcon,
+  XMarkIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -87,6 +90,8 @@ export default function InterviewBuddyWizard() {
   const [interviewType, setInterviewType] = useState('MIXED');
   const [selectedMode, setSelectedMode] = useState(null);
   const [jobSearchQuery, setJobSearchQuery] = useState('');
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [quotaError, setQuotaError] = useState(null);
 
   useEffect(() => {
     loadResumes();
@@ -171,7 +176,15 @@ export default function InterviewBuddyWizard() {
       router.push(`/candidate/interview-buddy/session/${session._id}`);
     } catch (error) {
       console.error('Failed to create session:', error);
-      toast.error(error.message || 'Failed to create session');
+      const errorMessage = error.message || 'Failed to create session';
+      
+      // Check if it's a quota/limit error
+      if (errorMessage.includes('Limit reached') || errorMessage.includes('quota') || errorMessage.includes('upgrade')) {
+        setQuotaError(errorMessage);
+        setShowUpgradeModal(true);
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -613,6 +626,168 @@ export default function InterviewBuddyWizard() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Upgrade Modal */}
+      <Transition show={showUpgradeModal} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setShowUpgradeModal(false)}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-zinc-900/75 backdrop-blur-sm" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-2xl bg-white dark:bg-zinc-900 p-8 text-left align-middle shadow-xl transition-all">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                        <SparklesIcon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                      </div>
+                      <Dialog.Title as="h3" className="text-2xl font-bold text-zinc-950 dark:text-white">
+                        Upgrade Your Plan
+                      </Dialog.Title>
+                    </div>
+                    <button
+                      onClick={() => setShowUpgradeModal(false)}
+                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                    >
+                      <XMarkIcon className="h-6 w-6" />
+                    </button>
+                  </div>
+
+                  {quotaError && (
+                    <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl">
+                      <p className="text-sm text-orange-800 dark:text-orange-200">
+                        {quotaError}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mb-6">
+                    <p className="text-zinc-600 dark:text-zinc-400 mb-4">
+                      You've reached your monthly limit for Interview Buddy sessions. Upgrade to unlock more sessions and premium features.
+                    </p>
+                  </div>
+
+                  {/* Plan Options */}
+                  <div className="grid md:grid-cols-2 gap-4 mb-6">
+                    {/* PRO Plan */}
+                    <div className="border-2 border-zinc-200 dark:border-zinc-700 rounded-xl p-6 hover:border-primary-300 dark:hover:border-primary-700 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-lg font-bold text-zinc-900 dark:text-white">Pro Plan</h4>
+                        <span className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-xs font-semibold">
+                          $29/mo
+                        </span>
+                      </div>
+                      <ul className="space-y-2 mb-4">
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>5 Interview Sessions/month</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>AI Resume Optimization</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>AI Cover Letter</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>50 Job Applications/month</span>
+                        </li>
+                      </ul>
+                      <button
+                        onClick={() => {
+                          setShowUpgradeModal(false);
+                          router.push('/candidate/billing?plan=PRO');
+                        }}
+                        className="w-full px-4 py-3 bg-primary-500 text-white rounded-xl hover:bg-primary-600 font-semibold transition-all shadow-sm hover:shadow-md"
+                      >
+                        Upgrade to Pro
+                      </button>
+                    </div>
+
+                    {/* ELITE Plan */}
+                    <div className="border-2 border-primary-500 rounded-xl p-6 bg-primary-50 dark:bg-primary-900/10 relative">
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+                        RECOMMENDED
+                      </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-lg font-bold text-zinc-900 dark:text-white">Elite Plan</h4>
+                        <span className="px-3 py-1 bg-primary-500 text-white rounded-full text-xs font-semibold">
+                          $99/mo
+                        </span>
+                      </div>
+                      <ul className="space-y-2 mb-4">
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>20 Interview Sessions/month</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>Unlimited Job Applications</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>Human Agent Support</span>
+                        </li>
+                        <li className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                          <CheckCircleIcon className="w-5 h-5 text-primary-500" />
+                          <span>Advanced Analytics</span>
+                        </li>
+                      </ul>
+                      <button
+                        onClick={() => {
+                          setShowUpgradeModal(false);
+                          router.push('/candidate/billing?plan=ELITE');
+                        }}
+                        className="w-full px-4 py-3 bg-primary-500 text-white rounded-xl hover:bg-primary-600 font-semibold transition-all shadow-sm hover:shadow-md"
+                      >
+                        Upgrade to Elite
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                    <button
+                      onClick={() => setShowUpgradeModal(false)}
+                      className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                    >
+                      Maybe later
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowUpgradeModal(false);
+                        router.push('/candidate/billing');
+                      }}
+                      className="text-sm font-semibold text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                    >
+                      View All Plans →
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
     </DashboardLayout>
   );
 }
