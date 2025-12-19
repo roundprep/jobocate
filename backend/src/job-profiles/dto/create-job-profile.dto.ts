@@ -20,6 +20,16 @@ export class CreateJobProfileDto {
   role?: string;
 
   @ApiProperty({
+    description: 'Experience level',
+    example: 'senior',
+    enum: ['entry', 'junior', 'mid', 'senior', 'lead', 'principal', 'staff', 'director'],
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  level?: string;
+
+  @ApiProperty({
     description: 'Preferred location',
     example: 'San Francisco, CA',
     required: false,

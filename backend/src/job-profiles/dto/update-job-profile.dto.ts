@@ -13,6 +13,15 @@ export class UpdateJobProfileDto {
   @IsOptional()
   role?: string;
 
+  @ApiProperty({ 
+    description: 'Experience level',
+    enum: ['entry', 'junior', 'mid', 'senior', 'lead', 'principal', 'staff', 'director'],
+    required: false 
+  })
+  @IsString()
+  @IsOptional()
+  level?: string;
+
   @ApiProperty({ description: 'Preferred location', required: false })
   @IsString()
   @IsOptional()

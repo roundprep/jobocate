@@ -21,6 +21,9 @@ export class JobProfile {
   role?: string;
 
   @Prop()
+  level?: string; // entry, junior, mid, senior, lead, principal, staff, director
+
+  @Prop()
   location?: string;
 
   @Prop({ enum: JobType, default: JobType.REMOTE })
