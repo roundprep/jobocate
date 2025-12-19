@@ -18,7 +18,7 @@ const getApiUrl = () => {
     return process.env.REACT_APP_BACKEND_URL;
   }
   
-  // Default to port 8000
+  // Default URL
   return 'http://localhost:8000';
 };
 

@@ -66,20 +66,21 @@ import {
 } from '@heroicons/react/24/outline';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
+import DefaultPreview from '@/components/resume-builder/templates/DefaultPreview';
+import FinanceTemplatePreview from '@/components/resume-builder/templates/FinanceTemplatePreview';
 
 // Import template images - these will be used once images are added to the assets folder
 // For now, we'll use a fallback system that shows placeholders if images don't exist
 // To add images: Extract images from PDF and save them as:
-// - frontend/src/assets/resume-templates/modern.png
-// - frontend/src/assets/resume-templates/professional.png
-// - frontend/src/assets/resume-templates/creative.png
-// - frontend/src/assets/resume-templates/minimal.png
-// - frontend/src/assets/resume-templates/executive.png
-// - frontend/src/assets/resume-templates/ats-friendly.png
+// - frontend/public/resume-templates/modern.png
+// - frontend/public/resume-templates/professional.png
+// - frontend/public/resume-templates/creative.png
+// - frontend/public/resume-templates/minimal.png
+// - frontend/public/resume-templates/executive.png
+// - frontend/public/resume-templates/ats-friendly.png
 
 const WIZARD_STEPS = {
   DASHBOARD: 'dashboard', // New Dashboard Step
-  TEMPLATE: 'template',
   UPLOAD_OR_NEW: 'upload-or-new',
   EDITOR: 'editor', // New unified editor with tabs
   EXPERT_REVIEW: 'expert-review', // Expert review options after resume creation
@@ -101,13 +102,13 @@ const EDITOR_TABS = {
   CONTENT: 'content',
   CUSTOMIZE: 'customize',
   LINKS: 'links',
-
 };
 
 // Template images configuration
 // To add images: Extract images from PDF and save them to:
 // frontend/public/resume-templates/modern.png (or .jpg, .webp)
 // Then update the preview paths below
+// TODO: update the images later
 const templates = [
   {
     id: 'modern',
@@ -1027,8 +1028,8 @@ export default function AIResumeBuilder() {
   };
 
   const handleFileUpload = async () => {
-    if (!resumeFile || !selectedTemplate) {
-      toast.error('Please select a file and template');
+    if (!resumeFile) {
+      toast.error('Please select a file');
       return;
     }
 
@@ -1043,7 +1044,7 @@ export default function AIResumeBuilder() {
       const token = localStorage.getItem('authToken') || localStorage.getItem('token');
       const formData = new FormData();
       formData.append('resume', resumeFile);
-      formData.append('template', selectedTemplate);
+      formData.append('template', selectedTemplate || 'modern');
       formData.append('name', resumeNameInput.trim() || 'My Resume');
 
       const response = await fetch(`${API_URL}/api/resume-builder/upload`, {
@@ -1110,11 +1111,6 @@ export default function AIResumeBuilder() {
   };
 
   const handleCreateNew = async () => {
-    if (!selectedTemplate) {
-      toast.error('Please select a template');
-      return;
-    }
-
     // Show modal to get resume name
     if (!resumeNameInput.trim()) {
       setShowResumeNameModal(true);
@@ -1131,12 +1127,12 @@ export default function AIResumeBuilder() {
       }
 
       const requestBody = {
-        template: selectedTemplate,
+        template: selectedTemplate || 'modern',
         name: resumeNameInput.trim() || 'My Resume',
         importFromProfile: true,
       };
 
-      console.log('Creating resume with:', { template: selectedTemplate, name: requestBody.name });
+      console.log('Creating resume with:', { template: selectedTemplate || 'modern', name: requestBody.name });
       console.log('API URL:', `${API_URL}/api/resume-builder`);
 
       const response = await fetch(`${API_URL}/api/resume-builder`, {
@@ -1579,7 +1575,7 @@ export default function AIResumeBuilder() {
         // If we deleted the current resume, reset
         if (currentResume && (currentResume._id === id || currentResume.id === id)) {
           setCurrentResume(null);
-          navigateToStep(WIZARD_STEPS.TEMPLATE);
+          navigateToStep(WIZARD_STEPS.DASHBOARD);
         }
       } else {
         const error = await response.json();
@@ -1959,7 +1955,6 @@ export default function AIResumeBuilder() {
 
   const getStepTitle = () => {
     switch (currentStep) {
-      case WIZARD_STEPS.TEMPLATE: return 'Choose Your Template';
       case WIZARD_STEPS.UPLOAD_OR_NEW: return uploadMethod === 'upload' ? 'Upload Your Resume' : 'Create New Resume';
       case WIZARD_STEPS.EDITOR: return 'Edit Your Resume';
       case WIZARD_STEPS.COMPLETE: return 'Resume Complete!';
@@ -1969,7 +1964,6 @@ export default function AIResumeBuilder() {
 
   const getProgress = () => {
     const steps = [
-      WIZARD_STEPS.TEMPLATE,
       WIZARD_STEPS.UPLOAD_OR_NEW,
       WIZARD_STEPS.PERSONAL_INFO,
       WIZARD_STEPS.SUMMARY,
@@ -1984,219 +1978,17 @@ export default function AIResumeBuilder() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
+    
+    // Handle YYYY-MM format specifically to avoid timezone issues (treat as local date)
+    if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}$/)) {
+      const [year, month] = dateString.split('-').map(Number);
+      // Create date in local timezone (month is 0-indexed)
+      const date = new Date(year, month - 1);
+      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    }
+
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  // Live Preview Component - FlowCV Style - Full Width with Template Customization
-  const LivePreview = ({ templateSettings = { colorScheme: 'blue', fontFamily: 'inter' } }) => {
-    // Color scheme mapping
-    const colorSchemes = {
-      blue: { primary: 'text-primary-600', border: 'border-primary-600', bg: 'bg-primary-50' },
-      green: { primary: 'text-green-600', border: 'border-green-600', bg: 'bg-green-50' },
-      purple: { primary: 'text-purple-600', border: 'border-purple-600', bg: 'bg-purple-50' },
-      orange: { primary: 'text-orange-600', border: 'border-orange-600', bg: 'bg-orange-50' },
-      red: { primary: 'text-red-600', border: 'border-red-600', bg: 'bg-red-50' },
-      indigo: { primary: 'text-indigo-600', border: 'border-indigo-600', bg: 'bg-indigo-50' },
-    };
-
-    // Font family mapping
-    const fontFamilies = {
-      inter: 'font-sans',
-      roboto: 'font-sans',
-      playfair: 'font-serif',
-      lato: 'font-sans',
-      montserrat: 'font-sans',
-    };
-
-    const colors = colorSchemes[templateSettings.colorScheme] || colorSchemes.blue;
-    const fontClass = fontFamilies[templateSettings.fontFamily] || fontFamilies.inter;
-
-    // Format date and timestamp
-    const formatDate = (dateString) => {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    };
-
-    return (
-      <div className={`h-full w-full  bg-white dark:bg-zinc-900 overflow-y-auto ${fontClass}`}>
-        <div className="sticky top-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 px-6 py-4 z-10 w-full">
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">Live Preview</h3>
-              {currentResume && (
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">{resumeData.name || currentResume.name || 'My Resume'}</p>
-                  {currentResume.createdAt && (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(currentResume.createdAt)}</p>
-                  )}
-                </div>
-              )}
-            </div>
-            <Badge color="zinc" className="text-xs capitalize">{selectedTemplate || 'modern'}</Badge>
-          </div>
-        </div>
-        <div className="h-full w-full overflow-y-auto">
-          {/* Resume Preview Content - Full Width of Panel, No Padding Constraints */}
-          <div className="w-full px-8 py-8 space-y-6">
-            {/* Header */}
-            <div className={`border-b ${colors.border} pb-4 w-full`}>
-              {resumeData.photo && (
-                <div className="mb-4">
-                  <img src={resumeData.photo} alt="Profile" className="w-24 h-24 rounded-full object-cover" />
-                </div>
-              )}
-              <h1 className={`text-2xl font-bold ${colors.primary} mb-2 text-left`}>
-                {resumeData.fullName || 'Your Name'}
-              </h1>
-              <div className="flex flex-wrap gap-2 text-sm text-zinc-600 dark:text-zinc-400 text-left">
-                {resumeData.email && <span>• {resumeData.email}</span>}
-                {resumeData.phone && <span>• {resumeData.phone}</span>}
-                {resumeData.location && <span>• {resumeData.location}</span>}
-                {resumeData.website && <span>• {resumeData.website}</span>}
-                {resumeData.linkedin && <span>• LinkedIn</span>}
-                {resumeData.github && <span>• GitHub</span>}
-              </div>
-            </div>
-
-            {/* Summary */}
-            {resumeData.summary && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Professional Summary</h2>
-                <div
-                  className="text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed prose prose-sm max-w-none dark:prose-invert"
-                  dangerouslySetInnerHTML={{ __html: resumeData.summary }}
-                />
-              </div>
-            )}
-
-            {/* Profile Summary */}
-            {resumeData.profileSummary && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Profile Summary</h2>
-                <div
-                  className="text-sm text-zinc-600 leading-relaxed prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: resumeData.profileSummary }}
-                />
-              </div>
-            )}
-
-            {/* Skills */}
-            {resumeData.skills && resumeData.skills.length > 0 && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Skills</h2>
-                <div className="flex flex-wrap gap-2">
-                  {resumeData.skills.map((skill, idx) => (
-                    <Badge key={idx} color="zinc" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Technical Skills */}
-            {resumeData.technicalSkills && resumeData.technicalSkills.length > 0 && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-2`}>Technical Skills</h2>
-                <div className="flex flex-wrap gap-2">
-                  {resumeData.technicalSkills.map((skill, idx) => (
-                    <Badge key={idx} color="green" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Certifications */}
-            {resumeData.certifications && resumeData.certifications.length > 0 && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Certifications</h2>
-                <div className="space-y-2">
-                  {resumeData.certifications.map((cert, idx) => (
-                    <div key={idx}>
-                      <p className="font-semibold text-zinc-950 dark:text-white">{cert.name}</p>
-                      <p className="text-sm text-zinc-600 dark:text-zinc-400">{cert.issuer}</p>
-                      {cert.date && <p className="text-xs text-zinc-500 dark:text-zinc-500">{cert.date}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Professional References */}
-            {resumeData.references && resumeData.references.length > 0 && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Professional References</h2>
-                <div className="space-y-2">
-                  {resumeData.references.map((ref, idx) => (
-                    <div key={idx}>
-                      <p className="font-semibold text-zinc-950 dark:text-white">{ref.name}</p>
-                      <p className="text-sm text-zinc-600 dark:text-zinc-400">{ref.title} at {ref.company}</p>
-                      {ref.email && <p className="text-xs text-zinc-500 dark:text-zinc-500">{ref.email}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Professional Experience */}
-            {resumeData.experience && resumeData.experience.length > 0 && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Professional Experience</h2>
-                <div className="space-y-4">
-                  {resumeData.experience.map((exp, idx) => (
-                    <div key={idx}>
-                      <div className="flex items-start justify-between mb-1">
-                        <div>
-                          <p className="font-semibold text-zinc-950 dark:text-white">{exp.title}</p>
-                          <p className="text-sm text-zinc-600 dark:text-zinc-400">{exp.company}</p>
-                        </div>
-                        <span className="text-xs text-zinc-500 dark:text-zinc-500">
-                          {exp.startDate} - {exp.current ? 'Present' : exp.endDate || 'Present'}
-                        </span>
-                      </div>
-                      {exp.responsibilities && (
-                        <div
-                          className="text-sm text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed prose prose-sm max-w-none dark:prose-invert"
-                          dangerouslySetInnerHTML={{ __html: exp.responsibilities }}
-                        />
-                      )}
-                      {exp.description && (
-                        <p className="text-sm text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed">{exp.description}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Education */}
-            {resumeData.education && resumeData.education.length > 0 && (
-              <div>
-                <h2 className={`text-lg font-semibold ${colors.primary} mb-3`}>Education</h2>
-                <div className="space-y-2">
-                  {resumeData.education.map((edu, idx) => (
-                    <div key={idx}>
-                      <p className="font-semibold text-zinc-950 dark:text-white">{edu.degree}</p>
-                      <p className="text-sm text-zinc-600 dark:text-zinc-400">{edu.institution}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -2226,7 +2018,7 @@ export default function AIResumeBuilder() {
                         Upload
                       </button>
                       <button 
-                        onClick={() => navigateToStep(WIZARD_STEPS.TEMPLATE)} 
+                        onClick={() => navigateToStep(WIZARD_STEPS.UPLOAD_OR_NEW)} 
                         className="px-4 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors text-sm font-medium shadow-sm hover:shadow-md flex items-center"
                       >
                         <PlusIcon className="w-4 h-4 mr-2" />
@@ -2300,7 +2092,7 @@ export default function AIResumeBuilder() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                       {/* Create New Card */}
                       <div
-                        onClick={() => navigateToStep(WIZARD_STEPS.TEMPLATE)}
+                        onClick={() => navigateToStep(WIZARD_STEPS.UPLOAD_OR_NEW)}
                         className="group aspect-[3/4] border-2 border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-primary-500 dark:hover:border-primary-400 hover:bg-primary-50/50 dark:hover:bg-primary-900/20 transition-all duration-300"
                       >
                         <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center group-hover:bg-primary-100 dark:group-hover:bg-primary-900/30 transition-colors mb-4">
@@ -2327,23 +2119,37 @@ export default function AIResumeBuilder() {
                           className="group relative aspect-[3/4] bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-sm hover:shadow-xl hover:translate-y-[-4px] transition-all duration-300 cursor-pointer overflow-hidden flex flex-col"
                         >
                           <div className="flex-1 bg-zinc-50 dark:bg-zinc-800/50 relative overflow-hidden p-4 group-hover:bg-zinc-100 dark:group-hover:bg-zinc-800 transition-colors">
-                            {/* Mini Preview Placeholder since we don't store screenshots yet */}
-                            <div className="w-full h-full bg-white dark:bg-zinc-900 shadow-sm border border-zinc-100 dark:border-zinc-700 rounded flex flex-col p-3 scale-[0.9] origin-top group-hover:scale-100 transition-transform duration-500">
-                              <div className="w-1/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-4"></div>
-                              <div className="space-y-2">
-                                <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                                <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                                <div className="w-5/6 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                              </div>
-                              <div className="mt-6 flex gap-3">
-                                <div className="w-1/4 h-16 bg-zinc-100 dark:bg-zinc-800 rounded"></div>
-                                <div className="flex-1 space-y-2">
-                                  <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                                  <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                                  <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                            {/* Template Preview Image */}
+                            {(() => {
+                              const templateConfig = templates.find(t => t.id === (resume.template || 'modern'));
+                              return templateConfig?.preview ? (
+                                <div className="w-full h-full shadow-sm border border-zinc-100 dark:border-zinc-700 rounded overflow-hidden scale-[0.9] origin-top group-hover:scale-100 transition-transform duration-500">
+                                  <img 
+                                    src={templateConfig.preview} 
+                                    alt={resume.name} 
+                                    className="w-full h-full object-cover object-top"
+                                  />
                                 </div>
-                              </div>
-                            </div>
+                              ) : (
+                                /* Fallback Placeholder */
+                                <div className="w-full h-full bg-white dark:bg-zinc-900 shadow-sm border border-zinc-100 dark:border-zinc-700 rounded flex flex-col p-3 scale-[0.9] origin-top group-hover:scale-100 transition-transform duration-500">
+                                  <div className="w-1/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-4"></div>
+                                  <div className="space-y-2">
+                                    <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                    <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                    <div className="w-5/6 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  </div>
+                                  <div className="mt-6 flex gap-3">
+                                    <div className="w-1/4 h-16 bg-zinc-100 dark:bg-zinc-800 rounded"></div>
+                                    <div className="flex-1 space-y-2">
+                                      <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                      <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                      <div className="w-full h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                             {/* Hover Actions */}
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
@@ -2402,7 +2208,10 @@ export default function AIResumeBuilder() {
                         .map((template) => (
                           <div
                             key={template.id}
-                            onClick={() => handleTemplateSelect(template.id)}
+                            onClick={() => {
+                              setSelectedTemplate(template.id);
+                              navigateToStep(WIZARD_STEPS.UPLOAD_OR_NEW);
+                            }}
                             className="group relative aspect-[3/4] bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden cursor-pointer hover:shadow-xl hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-300 hover:-translate-y-1"
                           >
                             {/* Template Preview */}
@@ -2419,21 +2228,51 @@ export default function AIResumeBuilder() {
                                 </div>
                               )}
 
-                              {/* Mock Resume Preview */}
-                              <div className="w-full h-full bg-white dark:bg-zinc-900 rounded shadow-sm border border-zinc-100 dark:border-zinc-800 p-2.5 flex flex-col">
-                                <div className="w-2/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-3"></div>
-                                <div className="space-y-1.5 mb-3">
-                                  <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                                  <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                                  <div className="w-4/5 h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                              {/* Template Preview Image */}
+                              {template.preview ? (
+                                <div className="w-full h-full bg-white dark:bg-zinc-900 rounded shadow-sm border border-zinc-100 dark:border-zinc-800 overflow-hidden">
+                                  <img 
+                                    src={template.preview} 
+                                    alt={template.name} 
+                                    className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextSibling.style.display = 'flex';
+                                    }}
+                                  />
+                                  {/* Fallback if image fails to load */}
+                                  <div className="hidden w-full h-full bg-white dark:bg-zinc-900 p-2.5 flex-col">
+                                    <div className="w-2/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-3"></div>
+                                    <div className="space-y-1.5 mb-3">
+                                      <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                      <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                      <div className="w-4/5 h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                    </div>
+                                    <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">EDUCATION</div>
+                                    <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
+                                    <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">WORK EXPERIENCE</div>
+                                    <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
+                                    <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">PROJECTS</div>
+                                    <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  </div>
                                 </div>
-                                <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">EDUCATION</div>
-                                <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
-                                <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">WORK EXPERIENCE</div>
-                                <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
-                                <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">PROJECTS</div>
-                                <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-                              </div>
+                              ) : (
+                                /* Mock Resume Preview Fallback */
+                                <div className="w-full h-full bg-white dark:bg-zinc-900 rounded shadow-sm border border-zinc-100 dark:border-zinc-800 p-2.5 flex flex-col">
+                                  <div className="w-2/3 h-2 bg-zinc-800 dark:bg-zinc-200 rounded mb-3"></div>
+                                  <div className="space-y-1.5 mb-3">
+                                    <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                    <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                    <div className="w-4/5 h-1 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                  </div>
+                                  <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">EDUCATION</div>
+                                  <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
+                                  <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">WORK EXPERIENCE</div>
+                                  <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mb-1.5"></div>
+                                  <div className="text-[8px] font-bold text-zinc-600 dark:text-zinc-400 uppercase mb-1 tracking-wide">PROJECTS</div>
+                                  <div className="w-full h-0.5 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Template Info */}
@@ -2449,126 +2288,7 @@ export default function AIResumeBuilder() {
               </div>
             )}
 
-            {/* Template Selection Step - Modern Design */}
-            {currentStep === WIZARD_STEPS.TEMPLATE && (
-              <div className="w-full px-6 py-12 bg-zinc-50/50 dark:bg-zinc-900 min-h-[80vh]">
-                <div className="max-w-7xl mx-auto">
-                  <div className="mb-16 text-center space-y-4">
-                    <h2 className="text-4xl md:text-5xl font-bold text-zinc-900 dark:text-white tracking-tight">
-                      Choose your starting point
-                    </h2>
-                    <p className="text-xl text-zinc-500 dark:text-zinc-400 max-w-2xl mx-auto font-light">
-                      Select a professionally designed template to stand out. You can change this later at any time.
-                    </p>
-                  </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 px-4">
-                    {templates.map((template) => {
-                      const isLocked = template.isPro && !canAccessProTemplate(template);
-                      return (
-                      <div
-                        key={template.id}
-                        onClick={() => !isLocked && handleTemplateSelect(template.id)}
-                        className={`group relative cursor-pointer rounded-2xl transition-all duration-300 bg-white dark:bg-zinc-900 overflow-hidden ${selectedTemplate === template.id
-                          ? 'ring-4 ring-indigo-500/20 dark:ring-indigo-400/20 shadow-2xl scale-[1.02]'
-                          : 'hover:shadow-xl hover:-translate-y-1 border border-zinc-100 dark:border-zinc-800'
-                          } ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
-                      >
-                        {/* Selection Indicator */}
-                        {selectedTemplate === template.id && (
-                          <div className="absolute top-4 right-4 z-20 bg-indigo-600 dark:bg-indigo-500 text-white p-1.5 rounded-full shadow-lg">
-                            <CheckCircleIcon className="w-6 h-6" />
-                          </div>
-                        )}
-                        {/* PRO Badge */}
-                        {template.isPro && (
-                          <div className="absolute top-4 left-4 z-20">
-                            <Badge className="bg-gradient-to-r from-primary-500 to-primary-600 text-white text-xs font-bold px-2 py-1">
-                              PRO
-                            </Badge>
-                          </div>
-                        )}
-
-                        {/* Preview Area */}
-                        <div className="relative aspect-[3/4] overflow-hidden bg-zinc-100 dark:bg-zinc-800">
-                          {template.preview ? (
-                            <img
-                              src={template.preview}
-                              alt={template.name}
-                              className="w-full h-full object-cover object-top transition-transform duration-700 group-hover:scale-105"
-                              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                            />
-                          ) : null}
-
-                          {/* Fallback / Placeholder if image missing or error */}
-                          <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-zinc-900" style={{ display: template.preview ? 'none' : 'flex' }}>
-                            {/* CSS-only Mockup */}
-                            <div className={`w-[80%] h-[85%] shadow-lg rounded bg-white dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 p-4 space-y-4 overflow-hidden transform group-hover:scale-105 transition-transform duration-500`}>
-                              <div className="flex gap-4 mb-6">
-                                <div className={`w-12 h-12 rounded-full bg-${template.color}-100 dark:bg-${template.color}-900/30`}></div>
-                                <div className="space-y-2 flex-1">
-                                  <div className={`h-4 bg-zinc-800 dark:bg-zinc-200 rounded w-3/4`}></div>
-                                  <div className="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-1/2"></div>
-                                </div>
-                              </div>
-                              <div className="space-y-2">
-                                <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
-                                <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
-                                <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-5/6"></div>
-                              </div>
-                              <div className="grid grid-cols-3 gap-4 mt-8">
-                                <div className="col-span-2 space-y-3">
-                                  <div className="h-3 bg-zinc-300 dark:bg-zinc-600 rounded w-1/3 mb-2"></div>
-                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
-                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
-                                </div>
-                                <div className="space-y-3">
-                                  <div className="h-3 bg-zinc-300 dark:bg-zinc-600 rounded w-1/2 mb-2"></div>
-                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
-                                  <div className="h-2 bg-zinc-100 dark:bg-zinc-700 rounded w-full"></div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Hover Overlay */}
-                          <div className="absolute inset-0 bg-indigo-900/0 group-hover:bg-indigo-900/10 transition-colors duration-300" />
-
-                          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-center pb-8">
-                            <span className="bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white px-6 py-2 rounded-full font-semibold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                              Select Template
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Lock Overlay */}
-                        {isLocked && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50 dark:bg-zinc-800/50 rounded-2xl z-30">
-                            <div className="text-center">
-                              <svg className="w-8 h-8 text-white mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                              </svg>
-                              <p className="text-white text-sm font-medium">Upgrade to PRO</p>
-                            </div>
-                          </div>
-                        )}
-                        {/* Info Footer */}
-                        <div className="p-6 border-t border-zinc-50 dark:border-zinc-800">
-                          <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-xl font-bold text-zinc-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{template.name}</h3>
-                            {template.category === 'Popular' && (
-                              <Badge color="indigo" className="text-xs font-medium px-2 py-0.5">Popular</Badge>
-                            )}
-                          </div>
-                          <p className="text-zinc-500 dark:text-zinc-400 text-sm">{template.description}</p>
-                        </div>
-                      </div>
-                    );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Upload or New Step - Full Width */}
             {currentStep === WIZARD_STEPS.UPLOAD_OR_NEW && (
@@ -2609,7 +2329,12 @@ export default function AIResumeBuilder() {
 
                     {/* Start Fresh Option */}
                     <div
-                      onClick={() => !isGenerating && handleMethodSelect('new')}
+                      onClick={() => {
+                        if (!isGenerating) {
+                          setUploadMethod('new');
+                          setShowResumeNameModal(true);
+                        }
+                      }}
                       className={`group relative cursor-pointer rounded-3xl border-2 transition-all duration-300 overflow-hidden ${uploadMethod === 'new'
                         ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-blue-900/20 shadow-2xl ring-4 ring-blue-100 dark:ring-blue-900/30 scale-[1.02]'
                         : 'border-zinc-200 dark:border-zinc-700 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-xl bg-white dark:bg-zinc-900'
@@ -2715,65 +2440,7 @@ export default function AIResumeBuilder() {
                     </div>
                   )}
 
-                  {/* Start Fresh Section */}
-                  {uploadMethod === 'new' && !isGenerating && (
-                    <div className="bg-white rounded-xl border border-zinc-200 p-8 shadow-sm">
-                      <div className="mb-6">
-                        <h3 className="text-lg font-semibold text-zinc-950 mb-2">Create New Resume</h3>
-                        <p className="text-sm text-zinc-500">
-                          We'll import your profile information and help you build a professional resume
-                        </p>
-                      </div>
 
-                      <div className="bg-primary-50 rounded-lg border border-primary-200 p-4 mb-6">
-                        <div className="flex items-start gap-3">
-                          <SparklesIcon className="h-5 w-5 text-primary-600 mt-0.5" />
-                          <div>
-                            <p className="text-sm font-medium text-zinc-950 mb-1">What we'll import:</p>
-                            <ul className="text-sm text-zinc-600 space-y-1 list-disc list-inside">
-                              <li>Your personal information (name, email, phone)</li>
-                              <li>Professional summary</li>
-                              <li>Skills and experience</li>
-                              <li>Education history</li>
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-3">
-                        <Button
-                          onClick={() => setUploadMethod(null)}
-                          outline
-                        >
-                          <ChevronLeftIcon data-slot="icon" className="h-4 w-4" />
-                          Back
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            if (!resumeNameInput.trim()) {
-                              setShowResumeNameModal(true);
-                            } else {
-                              handleCreateNew();
-                            }
-                          }}
-                          className="bg-primary-500 hover:bg-primary-600 text-white flex-1"
-                          disabled={isGenerating}
-                        >
-                          {isGenerating ? (
-                            <>
-                              <ArrowPathIcon data-slot="icon" className="h-4 w-4 animate-spin" />
-                              Creating...
-                            </>
-                          ) : (
-                            <>
-                              Create Resume
-                              <ChevronRightIcon data-slot="icon" className="h-4 w-4" />
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Loading State for Start Fresh */}
                   {uploadMethod === 'new' && isGenerating && (
@@ -3361,24 +3028,26 @@ export default function AIResumeBuilder() {
                               <div className="px-4 pb-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {editingSection === 'skills' ? (
                                   <div className="space-y-3 pt-2">
-                                    <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
-                                      List your skills
-                                    </Label>
-                                    <RichTextEditor
-                                      value={Array.isArray(resumeData.skills) ? resumeData.skills.join('\n') : (resumeData.skills || '')}
-                                      onChange={(value) => {
-                                        // Handle converting HTML to clean list
-                                        const tempDiv = document.createElement('div');
-                                        tempDiv.innerHTML = value;
-                                        // Replace <br> and blocks with newlines to clean up
-                                        const cleanText = tempDiv.innerText || tempDiv.textContent || '';
-                                        // This is a bit of a hack since RichTextEditor returns HTML
-                                        // Ideally we want a tagging input for skills, but sticking to existing logic for now
-                                        const skillsArray = cleanText.split(/\n|,/).map(s => s.trim()).filter(s => s);
-                                        setResumeData(prev => ({ ...prev, skills: skillsArray }));
-                                      }}
-                                      placeholder="Enter your skills, one per line..."
-                                    />
+                                    <Field>
+                                      <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
+                                        List your skills
+                                      </Label>
+                                      <RichTextEditor
+                                        value={Array.isArray(resumeData.skills) ? resumeData.skills.join('\n') : (resumeData.skills || '')}
+                                        onChange={(value) => {
+                                          // Handle converting HTML to clean list
+                                          const tempDiv = document.createElement('div');
+                                          tempDiv.innerHTML = value;
+                                          // Replace <br> and blocks with newlines to clean up
+                                          const cleanText = tempDiv.innerText || tempDiv.textContent || '';
+                                          // This is a bit of a hack since RichTextEditor returns HTML
+                                          // Ideally we want a tagging input for skills, but sticking to existing logic for now
+                                          const skillsArray = cleanText.split(/\n|,/).map(s => s.trim()).filter(s => s);
+                                          setResumeData(prev => ({ ...prev, skills: skillsArray }));
+                                        }}
+                                        placeholder="Enter your skills, one per line..."
+                                      />
+                                    </Field>
                                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                                       Tip: Enter skills separated by new lines or commas.
                                     </p>
@@ -5796,7 +5465,7 @@ export default function AIResumeBuilder() {
                               <div className="px-4 pb-4 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {editingSection === 'declaration' ? (
                                   <div className="space-y-4">
-                                    <div className="pt-2">
+                                    <Field className="pt-2">
                                       <Label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wide mb-2 block">
                                         Declaration Text
                                       </Label>
@@ -5805,7 +5474,7 @@ export default function AIResumeBuilder() {
                                         onChange={(value) => setResumeData(prev => ({ ...prev, declaration: value }))}
                                         placeholder="I hereby declare that the information provided is true and correct..."
                                       />
-                                    </div>
+                                    </Field>
                                     <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-200 dark:border-zinc-700">
                                       <Button
                                         onClick={() => setEditingSection(null)}
@@ -6918,7 +6587,16 @@ export default function AIResumeBuilder() {
                       ) : (
                         <div className="h-full overflow-y-auto">
                           {/* HTML Preview Fallback */}
-                          <LivePreview templateSettings={templateSettings} />
+                          {selectedTemplate === 'finance' ? (
+                            <FinanceTemplatePreview data={resumeData} />
+                          ) : (
+                            <DefaultPreview 
+                              resumeData={resumeData} 
+                              templateSettings={templateSettings} 
+                              currentResume={currentResume}
+                              selectedTemplate={selectedTemplate}
+                            />
+                          )}
                         </div>
                       )}
                     </div>
@@ -7961,10 +7639,16 @@ export default function AIResumeBuilder() {
                       </Button>
                       <Button
                         className="bg-primary-500 hover:bg-primary-600 text-white"
-                        onClick={handleCreateNew}
+                        onClick={() => {
+                          if (uploadMethod === 'upload') {
+                            handleFileUpload();
+                          } else {
+                            handleCreateNew();
+                          }
+                        }}
                         disabled={!resumeNameInput.trim()}
                       >
-                        Create Resume
+                        {uploadMethod === 'upload' ? 'Upload Resume' : 'Create Resume'}
                       </Button>
                     </div>
                   </Dialog.Panel>
