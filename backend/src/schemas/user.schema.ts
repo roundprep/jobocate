@@ -13,7 +13,7 @@ export type UserDocument = HydratedDocument<User>;
   timestamps: true,
   toJSON: {
     virtuals: true,
-    transform: (doc: any, ret: any) => {
+    transform: (doc: any, ret: Record<string, any>) => {
       ret.id = ret._id?.toString?.() ?? ret._id;
       delete ret._id;
       delete ret.__v;

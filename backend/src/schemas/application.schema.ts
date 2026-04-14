@@ -29,6 +29,26 @@ export class Application {
   @Prop({ default: '' })
   resume?: string;
 
+  @Prop({ default: '' })
+  source?: string; // e.g. Indeed, LinkedIn, Greenhouse
+
+  @Prop({ default: '' })
+  atsType?: string; // e.g. greenhouse, lever, workday
+
+  @Prop({ type: Object, default: {} })
+  artifacts?: {
+    screenshotUrl?: string;
+    formJsonUrl?: string;
+    resumeVersionId?: Types.ObjectId;
+    coverLetterVersionId?: Types.ObjectId;
+  };
+
+  @Prop({ default: '' })
+  failReason?: string;
+
+  @Prop({ type: Object, default: {} })
+  atsMetadata?: Record<string, any>;
+
   @Prop({
     enum: ['pending', 'submitted', 'reviewing', 'interviewed', 'rejected', 'accepted'],
     default: 'pending',
@@ -83,4 +103,3 @@ ApplicationSchema.index({ status: 1 });
 ApplicationSchema.index({ appliedAt: -1 });
 ApplicationSchema.index({ agentId: 1 });
 ApplicationSchema.index({ candidateId: 1, agentId: 1 });
-

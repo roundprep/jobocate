@@ -149,3 +149,40 @@ export const processApplicationQueue = async (limit = 10) => {
     method: 'POST',
   });
 };
+
+// User Preferences API
+export const getUserPreferences = async () => {
+  return apiCall('/api/users/preferences');
+};
+
+export const updateUserPreferences = async (prefs) => {
+  return apiCall('/api/users/preferences', {
+    method: 'PUT',
+    body: JSON.stringify(prefs),
+  });
+};
+
+// Application Activity API
+export const getApplicationActivity = async (params = {}) => {
+  const search = new URLSearchParams();
+  if (params.since) search.append('since', params.since);
+  if (params.limit) search.append('limit', params.limit);
+  if (params.skip) search.append('skip', params.skip);
+  if (params.type) {
+    if (Array.isArray(params.type)) {
+      params.type.forEach((t) => search.append('type', t));
+    } else {
+      search.append('type', params.type);
+    }
+  }
+  const qs = search.toString();
+  return apiCall(`/api/applications/activity${qs ? `?${qs}` : ''}`);
+};
+
+// Apply Runner (stub) API
+export const processApplyRunner = async (limit = 10) => {
+  return apiCall('/api/apply-runner/process', {
+    method: 'POST',
+    body: JSON.stringify({ limit }),
+  });
+};

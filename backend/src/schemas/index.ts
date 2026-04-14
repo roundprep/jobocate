@@ -8,6 +8,7 @@ export {
   PlanType, 
   SubscriptionStatus 
 } from './user.schema';
+export { UserPreferences, UserPreferencesSchema, UserPreferencesDocument } from './user-preferences.schema';
 
 // Export from subscription-plan (excluding PlanType which is in user.schema)
 export { 

@@ -5,6 +5,8 @@ import { Application, ApplicationDocument } from '../schemas/application.schema'
 import { User, UserDocument } from '../schemas/user.schema';
 import { Job, JobDocument } from '../schemas/job.schema';
 import { MatchingService } from '../matching/matching.service';
+import { UserPreferencesService } from '../users/user-preferences.service';
+import { ApplicationEventsService } from './application-events.service';
 
 @Injectable()
 export class ApplicationAgentService {
@@ -17,6 +19,8 @@ export class ApplicationAgentService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Job.name) private jobModel: Model<JobDocument>,
     private matchingService: MatchingService,
+    private readonly userPreferencesService: UserPreferencesService,
+    private readonly applicationEventsService: ApplicationEventsService,
   ) {
     this.autoApplicationEnabled = process.env.AUTO_APPLICATION_ENABLED === 'true';
     this.minMatchScore = parseInt(process.env.MIN_MATCH_SCORE_FOR_AUTO_APPLY || '75', 10);
@@ -71,6 +75,19 @@ export class ApplicationAgentService {
           continue;
         }
 
+        // Preferences guardrails
+        const prefs = await this.userPreferencesService.getOrCreate(userId);
+        if (this.isBlockedByPreferences(job, prefs)) {
+          await this.applicationEventsService.recordEvent({
+            applicationId: undefined as any,
+            userId: user._id,
+            type: 'skipped_preferences',
+            message: `Skipped ${job.title} due to preferences`,
+            meta: { jobId },
+          });
+          continue;
+        }
+
         // Calculate match
         const match = await this.matchingService.calculateMatch(userId, jobId);
 
@@ -95,7 +112,14 @@ export class ApplicationAgentService {
           autoApplied: true,
         });
 
-        await application.save();
+        const saved = await application.save();
+        await this.applicationEventsService.recordEvent({
+          applicationId: saved._id as any,
+          userId: saved.candidateId,
+          type: 'queued',
+          message: `Queued ${job.title} at ${job.companyName}`,
+          meta: { jobId },
+        });
         applications.push(application);
         applicationsToday++;
 
@@ -190,5 +214,25 @@ export class ApplicationAgentService {
       remaining,
     };
   }
-}
 
+  private isBlockedByPreferences(job: JobDocument, prefs: any): boolean {
+    if (!prefs) return false;
+    if (prefs.remoteOnly && job.location && !/remote/i.test(job.location)) {
+      return true;
+    }
+    if (prefs.visaSponsorshipNeeded && job.tags && Array.isArray(job.tags)) {
+      const mentionsVisa = job.tags.some((t) => /visa/i.test(t));
+      if (!mentionsVisa) return true;
+    }
+    if (prefs.companyBlocklist && prefs.companyBlocklist.length) {
+      const company = (job.companyName || '').toLowerCase();
+      const blocked = prefs.companyBlocklist.some((c) => company.includes(c.toLowerCase()));
+      if (blocked) return true;
+    }
+    if (prefs.salaryMin && job.salary) {
+      const salaryNum = Number(String(job.salary).replace(/[^0-9]/g, ''));
+      if (salaryNum && salaryNum < prefs.salaryMin) return true;
+    }
+    return false;
+  }
+}

@@ -21,6 +21,9 @@ export class Job {
   skills?: string[];
 
   @Prop({ type: [String], default: [] })
+  tags?: string[];
+
+  @Prop({ type: [String], default: [] })
   requirements?: string[];
 
   @Prop({ default: 'Not specified' })
@@ -35,7 +38,7 @@ export class Job {
   @Prop({ default: 'Not specified' })
   experience?: string;
 
-  @Prop({ enum: ['LinkedIn', 'Indeed', 'Glassdoor', 'Manual'], required: true })
+  @Prop({ enum: ['LinkedIn', 'Indeed', 'Glassdoor', 'Manual', 'Greenhouse', 'Lever', 'Workday'], required: true })
   source: string;
 
   @Prop({ default: '' })
@@ -66,4 +69,3 @@ export const JobSchema = SchemaFactory.createForClass(Job);
 JobSchema.index({ title: 'text', description: 'text', companyName: 'text' });
 JobSchema.index({ skills: 1 });
 JobSchema.index({ location: 1 });
-

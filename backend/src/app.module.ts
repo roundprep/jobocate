@@ -23,6 +23,9 @@ import { EntitlementModule } from './entitlement/entitlement.module';
 import { LLMModule } from './llm/llm.module';
 import { JobTrackerModule } from './job-tracker/job-tracker.module';
 import { InterviewBuddyModule } from './interview-buddy/interview-buddy.module';
+import { MonitorsModule } from './monitors/monitors.module';
+import { ApplyRunnerModule } from './apply-runner/apply-runner.module';
+import { ScheduleModule } from '@nestjs/schedule';
 import { HealthController } from './health/health.controller';
 import { LoggerModule } from './common/logger/logger.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -56,6 +59,7 @@ function getEnvFilePath(): string {
       envFilePath: getEnvFilePath(),
       expandVariables: true,
     }),
+    ScheduleModule.forRoot(),
     LoggerModule,
     MongooseModule.forRoot(
       process.env.MONGODB_URI || 'mongodb://localhost:27017/jobocate',
@@ -99,6 +103,8 @@ function getEnvFilePath(): string {
     LLMModule,
     JobTrackerModule,
     InterviewBuddyModule,
+    MonitorsModule,
+    ApplyRunnerModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -112,4 +118,3 @@ function getEnvFilePath(): string {
   ],
 })
 export class AppModule {}
-

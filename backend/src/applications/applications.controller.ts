@@ -24,6 +24,9 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApplicationsService } from './applications.service';
 import { ApplicationAgentService } from './application-agent.service';
+import { ApplicationEventsService } from './application-events.service';
+
+import { ApplyRunnerService } from '../apply-runner/apply-runner.service';
 
 @ApiTags('applications')
 @Controller('applications')
@@ -34,7 +37,9 @@ export class ApplicationsController {
   constructor(
     private applicationsService: ApplicationsService,
     private applicationAgentService: ApplicationAgentService,
-  ) {}
+    private applicationEventsService: ApplicationEventsService,
+    private applyRunnerService: ApplyRunnerService,
+  ) { }
 
   @Post('queue/:jobId')
   @ApiBearerAuth('JWT-auth')
@@ -66,11 +71,11 @@ export class ApplicationsController {
   async applyToJob(@Param('jobId') jobId: string, @Request() req) {
     this.logger.log(`📝 Applying to job ${jobId} for user ${req.user?.email || 'unknown'}`);
     const userId = req.user._id.toString();
-    
+
     // Check if already applied
     const existing = await this.applicationsService.getUserApplications(userId);
     const alreadyApplied = existing.some((app) => app.jobId.toString() === jobId);
-    
+
     if (alreadyApplied) {
       this.logger.warn(`⚠️ User already applied to job ${jobId}`);
       throw new Error('Already applied to this job');
@@ -82,7 +87,7 @@ export class ApplicationsController {
       userId,
       jobId,
     );
-    
+
     this.logger.log(`✅ Application created: ${application._id}`);
     return {
       message: 'Application created successfully',
@@ -158,6 +163,42 @@ export class ApplicationsController {
       applications,
       total: applications.length,
     };
+  }
+
+  @Get('activity')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Get application activity events for the user' })
+  @ApiQuery({ name: 'since', required: false, description: 'ISO date to filter events' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Limit number of results (max 100)' })
+  @ApiQuery({ name: 'skip', required: false, description: 'Skip number of results' })
+  @ApiQuery({ name: 'type', required: false, description: 'Filter by event type (string or array)' })
+  async getActivity(
+    @Query('since') since: string,
+    @Query('limit') limit: string,
+    @Query('skip') skip: string,
+    @Query('type') type: string | string[],
+    @Request() req,
+  ) {
+    const userId = req.user._id.toString();
+    const events = await this.applicationEventsService.getEventsForUser(userId, {
+      since,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      skip: skip ? parseInt(skip, 10) : undefined,
+      type,
+    });
+    return {
+      message: 'Application activity retrieved successfully',
+      events,
+      total: events.length,
+    };
+  }
+
+  @Post('process')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Process queued applications (stub runner)' })
+  async processQueued(@Body('limit') limit: number = 10) {
+    const result = await this.applyRunnerService.process(limit || 10);
+    return { message: 'Processing complete', result };
   }
 
   @Get('stats')
@@ -297,4 +338,3 @@ export class ApplicationsController {
     };
   }
 }
-

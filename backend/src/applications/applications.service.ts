@@ -2,12 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Application, ApplicationDocument } from '../schemas/application.schema';
+import { ApplicationEventsService } from './application-events.service';
 
 @Injectable()
 export class ApplicationsService {
   constructor(
     @InjectModel(Application.name) private applicationModel: Model<ApplicationDocument>,
-  ) {}
+    private readonly applicationEventsService: ApplicationEventsService,
+  ) { }
 
   async createApplication(
     candidateId: string,
@@ -36,7 +38,14 @@ export class ApplicationsService {
       autoApplied,
     });
 
-    return application.save();
+    const saved = await application.save();
+    await this.applicationEventsService.recordEvent({
+      applicationId: saved._id as any,
+      userId: saved.candidateId,
+      type: 'queued',
+      message: 'Application queued',
+    });
+    return saved;
   }
 
   async getApplicationById(applicationId: string): Promise<ApplicationDocument> {
@@ -139,4 +148,3 @@ export class ApplicationsService {
     return stats;
   }
 }
-
